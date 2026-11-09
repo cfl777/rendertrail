@@ -1,0 +1,4 @@
+node_modules/
+dist/
+trace.json
+.DS_Store

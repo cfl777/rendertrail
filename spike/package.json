@@ -1,0 +1,17 @@
+{
+  "name": "rendertrail-spike",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway Phase 1 spike: record React renders of a fixture in headless Chrome.",
+  "scripts": {
+    "record": "node record-renders.mjs",
+    "record:fixed": "node record-renders.mjs ../fixtures/laggy-search SearchPage.fixed.tsx"
+  },
+  "dependencies": {
+    "bippy": "0.7.3",
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}
