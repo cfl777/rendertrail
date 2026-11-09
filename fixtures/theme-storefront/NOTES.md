@@ -1,6 +1,6 @@
 # theme-storefront: candidate notes (negative / decoy fixture)
 
-Not an EXPECTED.md: the counts below are worked out by hand and must be replaced by recorder output.
+Draft notes kept for provenance. EXPECTED.md and expected.json hold the recorder-verified counts; the sections below are the hand reasoning that preceded them.
 
 ## What it does
 
@@ -26,7 +26,7 @@ What this adds: the only fixture with **context**, and the only one where the co
 - **The Provider value**: it is a string, so there is no unstable-context-value problem. That would be the later "context fan-out" rule (§11), not the MVP.
 - **Rule 2**: there are no effects.
 
-## Expected commits (hand-reasoned)
+## Expected commits (hand-reasoned draft, before recording)
 
 | Commit | Trigger | What renders |
 |---|---|---|

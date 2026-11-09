@@ -1,6 +1,6 @@
 # user-table: candidate notes
 
-Not an EXPECTED.md: the counts below are worked out by hand and must be replaced by recorder output.
+Draft notes kept for provenance. EXPECTED.md and expected.json hold the recorder-verified counts; the sections below are the hand reasoning that preceded them.
 
 ## What it does
 
@@ -25,7 +25,7 @@ What this adds: the first fixture driven only by **click** steps, and the first 
 - **The button's inline `onClick` arrow** (`UserAdmin.tsx:10`): a DOM element, not a memo component.
 - **Rule 2**: there are no effects.
 
-## Expected commits (hand-reasoned)
+## Expected commits (hand-reasoned draft, before recording)
 
 | Commit | Trigger | What renders |
 |---|---|---|

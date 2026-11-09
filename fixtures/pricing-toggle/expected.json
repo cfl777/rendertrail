@@ -22,7 +22,7 @@
         "FeatureMatrix": 8,
         "FeatureRow": 640
       },
-      "inputMedianMsRange": [8, 200]
+      "inputMedianMsRange": [5, 200]
     },
     "PricingPage.fixed.tsx": {
       "commitCount": 5,

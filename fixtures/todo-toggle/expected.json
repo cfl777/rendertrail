@@ -19,7 +19,7 @@
         "TodoItem": 601,
         "TodoFooter": 2
       },
-      "inputMedianMsRange": [5, 200]
+      "inputMedianMsRange": [3, 200]
     },
     "TodoApp.fixed.tsx": {
       "commitCount": 7,

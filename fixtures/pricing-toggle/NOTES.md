@@ -1,6 +1,6 @@
 # pricing-toggle: candidate notes
 
-Not an EXPECTED.md: the counts below are worked out by hand and must be replaced by recorder output.
+Draft notes kept for provenance. EXPECTED.md and expected.json hold the recorder-verified counts; the sections below are the hand reasoning that preceded them.
 
 ## What it does
 
@@ -33,7 +33,7 @@ What this adds beyond laggy-search: the two rules **interact**. In laggy-search 
 - **Mount**: the effect runs once and sets `discount` to 0, which already is its value, so React bails out and there is no follow-up commit after mount. If the recorder does show an extra render here, it has no state change and must not count as rule 2.
 - **The button's inline `onClick`**: a DOM element.
 
-## Expected commits (hand-reasoned)
+## Expected commits (hand-reasoned draft, before recording)
 
 | Commit | Trigger | What renders |
 |---|---|---|

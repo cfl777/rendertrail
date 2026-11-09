@@ -10,25 +10,29 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { recordRender } from '../../src/recorder/index.js';
 import { InspectRenderInputSchema } from '../../src/shared/types.js';
 
 const FIXTURES = fileURLToPath(new URL('../../fixtures/', import.meta.url));
 
-interface ExpectedVariant {
-  commitCount: number;
-  commits: { index: number; trigger: string; renders: Record<string, number> }[];
-  rendersAfterMount: Record<string, number>;
-  /** Loose [low, high] range for the median input commit, in ms. */
-  inputMedianMsRange?: [number, number];
-}
+const ExpectedVariantSchema = z.object({
+  commitCount: z.number().int(),
+  commits: z.array(z.object({ index: z.number().int(), trigger: z.string(), renders: z.record(z.string(), z.number().int()) })),
+  rendersAfterMount: z.record(z.string(), z.number().int()),
+  /** Loose [low, high] range for the median input commit, in ms. Required so no variant silently skips the check. */
+  inputMedianMsRange: z.tuple([z.number(), z.number()]),
+});
 
-interface Expected {
-  test: string;
+const ExpectedSchema = z.object({
+  test: z.string(),
   /** The fixed variant's entry file, recorded with the same steps. */
-  fixedEntry?: string;
-  variants: Record<string, ExpectedVariant>;
-}
+  fixedEntry: z.string().optional(),
+  variants: z.record(z.string(), ExpectedVariantSchema),
+});
+
+/** Every fixture that ships with the repo; discovery alone would let a dropped expected.json pass silently. */
+const KNOWN_FIXTURES = ['cart-summary', 'laggy-search', 'pricing-toggle', 'theme-storefront', 'todo-toggle', 'user-table'];
 
 async function fixtureNames(): Promise<string[]> {
   const dirs = await readdir(FIXTURES, { withFileTypes: true });
@@ -47,7 +51,13 @@ async function loadFixture(name: string) {
   const files = await Promise.all(
     names.map(async (file) => ({ path: file, content: await readFile(path.join(dir, file), 'utf8') })),
   );
-  const expected = JSON.parse(await readFile(path.join(dir, 'expected.json'), 'utf8')) as Expected;
+  let expected: z.infer<typeof ExpectedSchema>;
+  try {
+    expected = ExpectedSchema.parse(JSON.parse(await readFile(path.join(dir, 'expected.json'), 'utf8')));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`fixtures/${name}/expected.json is invalid: ${msg}`);
+  }
   const test = JSON.parse(await readFile(path.join(dir, expected.test), 'utf8')) as Record<string, unknown> & {
     entry: string;
   };
@@ -62,7 +72,7 @@ const names = await fixtureNames();
 
 describe('fixture golden tests', () => {
   it('finds the fixtures', () => {
-    expect(names).toContain('laggy-search');
+    expect(names).toEqual(KNOWN_FIXTURES);
   });
 });
 
@@ -76,7 +86,8 @@ for (const name of names) {
     });
 
     for (const entry of entries) {
-      const want = expected.variants[entry]!;
+      const want = expected.variants[entry];
+      if (!want) throw new Error(`fixtures/${name}/expected.json has no variant for entry ${entry}`);
 
       it(`${entry} matches EXPECTED.md`, async () => {
         const input = InspectRenderInputSchema.parse({ ...test, files, entry });
@@ -115,7 +126,7 @@ for (const name of names) {
         }
         expect(summary.rendersAfterMount).toEqual(want.rendersAfterMount);
 
-        const [low, high] = want.inputMedianMsRange ?? [0, Infinity];
+        const [low, high] = want.inputMedianMsRange;
         expect(summary.timings.inputMedianMs).toBeGreaterThanOrEqual(low);
         expect(summary.timings.inputMedianMs).toBeLessThanOrEqual(high);
       });

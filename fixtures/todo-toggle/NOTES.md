@@ -1,6 +1,6 @@
 # todo-toggle: candidate notes
 
-Not an EXPECTED.md: the counts below are worked out by hand and must be replaced by recorder output.
+Draft notes kept for provenance. EXPECTED.md and expected.json hold the recorder-verified counts; the sections below are the hand reasoning that preceded them.
 
 ## What it does
 
@@ -27,7 +27,7 @@ What this adds: the memo component is the list item itself (100 instances of one
 - **The new row (`Task 101`)** in the add step: a mount, not a re-render.
 - **Rule 2**: there is no effect anywhere; no follow-up commits should appear.
 
-## Expected commits (hand-reasoned)
+## Expected commits (hand-reasoned draft, before recording)
 
 | Commit | Trigger | What renders |
 |---|---|---|

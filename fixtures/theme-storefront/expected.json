@@ -17,7 +17,7 @@
         "ProductGrid": 4,
         "ProductCard": 160
       },
-      "inputMedianMsRange": [4, 200]
+      "inputMedianMsRange": [2.5, 200]
     }
   }
 }

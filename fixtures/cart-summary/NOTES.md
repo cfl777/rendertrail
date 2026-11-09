@@ -1,6 +1,6 @@
 # cart-summary: candidate notes
 
-Not an EXPECTED.md: the counts below are worked out by hand and must be replaced by recorder output.
+Draft notes kept for provenance. EXPECTED.md and expected.json hold the recorder-verified counts; the sections below are the hand reasoning that preceded them.
 
 ## What it does
 
@@ -24,7 +24,7 @@ What this adds: rule 2 driven by **clicks**, not typing. It also tests the **sou
 - **Rule 1**: nothing is memoised. `CartLine` gets a new `onChange` function every render, but without `memo` that is not rule 1 and must stay silent.
 - **`CartLine` renders**: each input commit re-renders all 3 lines, but only one line's `item` changed. They are cheap (<< 1 ms) and not memoised, so no finding.
 
-## Expected commits (hand-reasoned)
+## Expected commits (hand-reasoned draft, before recording)
 
 Per click (the event is discrete, so React 18+ flushes the passive effects synchronously; see the React 18 changelog, "Consistent useEffect timing", https://github.com/facebook/react/blob/main/CHANGELOG.md#1800-march-29-2022):
 

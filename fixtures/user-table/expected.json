@@ -18,7 +18,7 @@
         "UserTable": 4,
         "UserRow": 600
       },
-      "inputMedianMsRange": [9, 200]
+      "inputMedianMsRange": [5, 200]
     },
     "UserAdmin.fixed.tsx": {
       "commitCount": 5,
