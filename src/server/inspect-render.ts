@@ -12,7 +12,7 @@ import {
   type StoredRun,
 } from '../shared/types.js';
 import { compareRuns, missingBaseline } from '../store/compare.js';
-import { listRunIds, loadRun, newRunId, runsDir, saveRun } from '../store/runs.js';
+import { listRunIds, loadRun, newRunId, resolveRunsDir, saveRun } from '../store/runs.js';
 
 export const INSPECT_RENDER_DESCRIPTION =
   'Record how a React component renders while someone interacts with it, and explain the main performance problem. ' +
@@ -29,11 +29,15 @@ function errorResult(error: RecordError): CallToolResult {
  * The inspect_render handler: record, analyze, compare with the baseline, store the run. Never
  * throws: problems are normal results that explain what to fix.
  */
-export async function inspectRender(input: InspectRenderInput, dir = runsDir()): Promise<CallToolResult> {
+export async function inspectRender(input: InspectRenderInput, runsDirOverride?: string): Promise<CallToolResult> {
+  const notes: string[] = [];
+  const resolved = resolveRunsDir();
+  const dir = runsDirOverride ?? resolved.dir;
+  if (!runsDirOverride && resolved.warning) notes.push(`Note: ${resolved.warning}`);
   try {
     const result = await recordRender(input);
     if (!result.ok) return errorResult(result.error);
-    const analysis = analyze({ summary: result.summary, traces: result.traces, files: input.files });
+    const analysis = await analyze({ summary: result.summary, traces: result.traces, files: input.files });
 
     const id = newRunId(new Set(await listRunIds(dir)));
     const run: StoredRun = {
@@ -49,16 +53,20 @@ export async function inspectRender(input: InspectRenderInput, dir = runsDir()):
 
     let comparison: Comparison | undefined;
     if (input.baselineRunId) {
-      const baseline = await loadRun(input.baselineRunId, dir);
-      comparison = baseline ? compareRuns(input.baselineRunId, baseline, run) : missingBaseline(input.baselineRunId);
+      // A broken baseline must never cost the user this run's findings.
+      try {
+        const baseline = await loadRun(input.baselineRunId, dir);
+        comparison = baseline.ok ? compareRuns(input.baselineRunId, baseline.run, run) : missingBaseline(input.baselineRunId, baseline.reason);
+      } catch {
+        comparison = missingBaseline(input.baselineRunId, 'unreadable');
+      }
     }
 
-    const notes: string[] = [];
+    let saveError: string | undefined;
     try {
       await saveRun(run, dir);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      notes.push(`Note: this run couldn't be saved (${message}), so it can't be used as a baseline.`);
+      saveError = err instanceof Error ? err.message : 'Unknown error';
     }
 
     const output: InspectRenderOutput = {
@@ -75,6 +83,7 @@ export async function inspectRender(input: InspectRenderInput, dir = runsDir()):
       keystroke: analysis.keystroke,
       runId: id,
       comparison,
+      saveError,
     });
     return {
       content: [{ type: 'text', text: [text, ...notes].join('\n') }],
