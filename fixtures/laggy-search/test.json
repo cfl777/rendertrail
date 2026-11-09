@@ -1,0 +1,8 @@
+{
+  "entry": "SearchPage.tsx",
+  "exportName": "default",
+  "steps": [
+    { "action": "type", "target": "input[aria-label=\"Search\"]", "text": "hello", "delayMs": 100 },
+    { "action": "wait", "ms": 600 }
+  ]
+}
