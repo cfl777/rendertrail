@@ -11,7 +11,8 @@ npm run build          # card -> dist/card.html, server -> dist/server.js
 npm test
 node dist/server.js    # the MCP server over stdio
 npm run start:http     # the MCP server over HTTP, for the ext-apps basic-host
-cd spike && npm install && RT_CHANNEL=chrome npm run record   # the recorder spike
+cd spike && npm install && RT_CHANNEL=chrome npm run record   # the recorder spike (Git Bash)
+cd spike; npm install; $env:RT_CHANNEL='chrome'; npm run record   # the same in PowerShell
 ```
 
 Connect it to Claude Code with `claude mcp add rendertrail -- node <absolute path>/dist/server.js`,

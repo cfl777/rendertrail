@@ -29,4 +29,4 @@ An open-source MCP App. It records how React components render in headless Chrom
 - Test: `npm test` (Vitest; no tests yet)
 - Run the server over stdio: `node dist/server.js` (`npm start`). This is what Claude Desktop and Claude Code launch.
 - Run the server over HTTP for the ext-apps basic-host: `npm run start:http` (`http://127.0.0.1:3001/mcp`, `PORT` overrides)
-- Run the spike: `cd spike && npm install && RT_CHANNEL=chrome npm run record`
+- Run the spike: `cd spike && npm install && RT_CHANNEL=chrome npm run record` (Git Bash); in PowerShell: `cd spike; npm install; $env:RT_CHANNEL='chrome'; npm run record`

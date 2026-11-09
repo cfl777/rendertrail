@@ -4,7 +4,11 @@
  *   node dist/server.js --http   Streamable HTTP on 127.0.0.1 (ext-apps basic-host, card work)
  */
 import http from 'node:http';
-import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
+import {
+  localhostHostValidation,
+  localhostOriginValidation,
+  NodeStreamableHTTPServerTransport,
+} from '@modelcontextprotocol/node';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { createServer } from './server.js';
 
@@ -15,7 +19,13 @@ async function startStdio(): Promise<void> {
 }
 
 function startHttp(port: number): void {
+  // Binding to 127.0.0.1 does not stop DNS rebinding: a page on another site can point its
+  // DNS at 127.0.0.1 and reach this port same-origin. Refuse any Host or Origin that is not
+  // localhost before doing anything else (both guards answer 403 themselves).
+  const validateHost = localhostHostValidation();
+  const validateOrigin = localhostOriginValidation();
   const httpServer = http.createServer((req, res) => {
+    if (!validateHost(req, res) || !validateOrigin(req, res)) return;
     const origin = req.headers.origin;
     if (origin && LOCAL_ORIGIN.test(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
