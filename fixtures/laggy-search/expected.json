@@ -86,7 +86,7 @@
     "comparison": {
       "baseline": "SearchPage.tsx",
       "fixed": "SearchPage.fixed.tsx",
-      "resolved": ["unstable-prop:ResultsList"],
+      "resolved": ["unstable-prop:ResultsList:filters"],
       "stillThere": ["state-in-effect:SearchBox:setCharCount"],
       "new": []
     }

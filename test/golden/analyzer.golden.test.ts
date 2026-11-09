@@ -112,7 +112,7 @@ describe('analyzer golden test', async () => {
           const variant = entry.replace(/\.[cm]?[jt]sx?$/, '');
           await writeFile(path.join(TRACES, `${name}.${variant}.json`), `${JSON.stringify({ summary: result.summary, traces: result.traces.slice(0, 1) })}\n`);
         }
-        const analysis = analyze({ summary: result.summary, traces: result.traces, files });
+        const analysis = await analyze({ summary: result.summary, traces: result.traces, files });
         console.log(
           `${name}/${entry}: ${analysis.keystroke.msPerStep} ms per ${analysis.keystroke.unit}; findings: ` +
             (analysis.allFindings.map((f) => `${f.id} (${f.msPerStep} ms/step, ${f.stepsAffected}/${f.steps} steps)`).join('; ') || 'none'),
@@ -132,7 +132,8 @@ describe('analyzer golden test', async () => {
       const first = before.structuredContent as InspectRenderOutput;
       if ('error' in first) throw new Error(JSON.stringify(first.error));
       expect(await listRunIds(runsDir)).toContain(first.run.id);
-      expect((await loadRun(first.run.id, runsDir))?.input.entry).toBe(cmp.baseline);
+      const stored = await loadRun(first.run.id, runsDir);
+      expect(stored.ok && stored.run.input.entry).toBe(cmp.baseline);
 
       // Claude edits the file in place: the fixed content under the baseline's path.
       const fixedContent = files.find((f) => f.path === cmp.fixed)!.content;
@@ -153,6 +154,7 @@ describe('analyzer golden test', async () => {
       expect(c.new.map((f) => f.id)).toEqual(cmp.new);
       expect(c.sameInteraction).toBe(true);
       expect(c.changedFiles).toEqual([cmp.baseline, cmp.fixed].sort());
+      expect(c.baselineFiles.map((f) => f.path).sort()).toEqual([cmp.baseline, cmp.fixed].sort());
       expect(text).toContain(`Compared with run ${first.run.id}`);
       expect(await listRunIds(runsDir)).toEqual(expect.arrayContaining([first.run.id, second.run.id]));
     });
