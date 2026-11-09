@@ -6,11 +6,11 @@ import {
   registerAppResource,
   registerAppTool,
 } from '@modelcontextprotocol/ext-apps/server';
-import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
-import { z } from 'zod';
+import { McpServer } from '@modelcontextprotocol/server';
 import pkg from '../../package.json' with { type: 'json' };
 import { BRAND } from '../brand.js';
-import { SCHEMA_VERSION, type HelloResult } from '../shared/types.js';
+import { InspectRenderInputShape } from '../shared/types.js';
+import { INSPECT_RENDER_DESCRIPTION, inspectRender } from './inspect-render.js';
 
 // The bundled server is dist/server.js; the card is built next to it.
 const CARD_HTML_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'card.html');
@@ -18,34 +18,16 @@ const CARD_HTML_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '
 export function createServer(): McpServer {
   const server = new McpServer({ name: BRAND.serverName, version: pkg.version });
 
-  // Temporary Phase 0 tool: proves the tool → card wiring. Removed when inspect_render lands.
   registerAppTool(
     server,
-    'hello',
+    'inspect_render',
     {
-      title: `${BRAND.displayName} hello (temporary)`,
-      description: `Temporary test tool for ${BRAND.displayName} setup. Greets someone and shows a test card.`,
-      inputSchema: { name: z.string().max(100).default('world').describe('Who to greet') },
+      title: `${BRAND.displayName}: inspect render`,
+      description: INSPECT_RENDER_DESCRIPTION,
+      inputSchema: InspectRenderInputShape,
       _meta: { ui: { resourceUri: BRAND.cardResourceUri } },
     },
-    ({ name }): CallToolResult => {
-      const result: HelloResult = {
-        schemaVersion: SCHEMA_VERSION,
-        greeting: `Hello, ${name}!`,
-        name,
-        serverTime: new Date().toISOString(),
-      };
-      return {
-        // Stands alone: Claude Code shows only this text.
-        content: [
-          {
-            type: 'text',
-            text: `${result.greeting} ${BRAND.displayName} is connected. Server time: ${result.serverTime}.`,
-          },
-        ],
-        structuredContent: { ...result },
-      };
-    },
+    (input) => inspectRender(input),
   );
 
   registerAppResource(
