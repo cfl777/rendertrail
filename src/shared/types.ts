@@ -77,6 +77,11 @@ export interface RenderedComponent {
   memo: boolean;
   /** Nearest composite parent fiber (not the owner that created the element). */
   parent: string | null;
+  /**
+   * Index of that parent in this commit's `rendered` list, or null when the parent didn't render
+   * in this commit. `rendered` is in depth-first order, so a subtree is contiguous.
+   */
+  parentIndex: number | null;
   selfMs: number;
   /** actualDuration: this component plus everything below it that rendered in this commit. */
   totalMs: number;
@@ -203,7 +208,10 @@ export interface SourceLocation {
 }
 
 export interface Finding {
-  /** Stable across runs, used by the comparison: `unstable-prop:ResultsList:filters`. */
+  /**
+   * Stable across runs, used by the comparison: `unstable-prop:ResultsList:filters`,
+   * `state-in-effect:SearchBox:setCharCount`.
+   */
   id: string;
   rule: FindingRule;
   /** 1 = the headline. */
@@ -215,21 +223,27 @@ export interface Finding {
   /** Rule 2: the state hook that was set, and the function (component or custom hook) that declares it. */
   hook?: { index: number; state: string | null; setter: string; owner: string };
   location: SourceLocation | null;
+  /** Rule 1: other places that pass the same prop to the same component. */
+  otherLocations?: SourceLocation[];
   /** Steps it happened on, out of all steps. */
   stepsAffected: number;
   steps: number;
   /** Commit indices it happened in (first run). */
   commits: number[];
   /**
-   * Median over all steps (a step without it counts as 0). Rule 1: wasted ms (the memo component
-   * and everything below it). Rule 2: render ms of the extra updates.
+   * Mean over all steps (total / steps), used for the threshold and the ranking. Rule 1: wasted ms
+   * (the memo component and everything below it). Rule 2: ms of the component's extra re-render.
    */
   msPerStep: number;
-  /** Median over all steps. Rule 1: wasted renders. Rule 2: renders in the extra updates. */
+  /** Median over the steps it happened on: what one affected step costs. */
+  msPerAffectedStep: number;
+  /** Mean over all steps. Rule 1: wasted renders. Rule 2: renders in the extra updates. */
   rendersPerStep: number;
+  /** Median over the steps it happened on. */
+  rendersPerAffectedStep: number;
   /** Rule 2: extra updates per step (mean over all steps). */
   extraUpdatesPerStep?: number;
-  /** Rule 1: the components below the memo component that re-rendered with it, per step: `{ ResultRow: 200 }`. */
+  /** Rule 1: the components below the memo component that re-rendered with it, per affected step: `{ ResultRow: 200 }`. */
   below?: Record<string, number>;
   fix: { kind: FixKind; compilerFixes: boolean };
   /** Plain-language texts for the card and the text result. */
@@ -299,8 +313,13 @@ export interface FindingRef {
 
 export interface Comparison {
   baselineRunId: string;
-  /** False when no stored run has that id; then only `message` is meaningful. */
+  /** False when no stored run has that id (or it can't be read); then only `message` is meaningful. */
   found: boolean;
+  /**
+   * False when either run recorded no update after input, so the fix can't be checked: then
+   * before/after are missing and the finding lists are empty.
+   */
+  checked: boolean;
   message: string;
   before?: { msPerStep: number; rendersPerStep: number; steps: number };
   after?: { msPerStep: number; rendersPerStep: number; steps: number };
@@ -311,6 +330,8 @@ export interface Comparison {
   sameInteraction: boolean;
   /** Files added, removed or changed since the baseline (paths as sent). */
   changedFiles: string[];
+  /** The baseline's version of the changed files that existed then, for "What changed in my code?". */
+  baselineFiles: { path: string; content: string }[];
 }
 
 export interface RunInfo {
