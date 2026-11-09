@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { RecordedTrace, TraceSummary } from '../shared/types.js';
+import type { RecordedTrace, TraceSummary } from '../../src/shared/types.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 

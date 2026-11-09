@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { confirmStateInEffect, dependenciesOf, findFunctions, findJsxProp, listHooks, parseFiles, reachableFrom } from './source.js';
-import { laggyFiles } from './testing.js';
+import { laggyFiles } from '../../test/helpers/laggy.js';
+import {
+  componentAliases,
+  confirmStateInEffect,
+  dependenciesOf,
+  findFunctions,
+  findJsxProp,
+  listHooks,
+  loadTypeScript,
+  parseFiles,
+  reachableFrom,
+} from './source.js';
+
+await loadTypeScript();
 
 const parse = (files: Record<string, string>) => parseFiles(Object.entries(files).map(([path, content]) => ({ path, content })));
 
@@ -113,6 +125,69 @@ describe('confirmStateInEffect', () => {
   });
 });
 
+describe('custom hooks and reducers', () => {
+  it('finds a setter a custom hook returns under a new name (array and object returns)', () => {
+    const src = parse({
+      'hooks.ts': [
+        "import { useState } from 'react';",
+        'export function useToggle() { const [v, setV] = useState(false); return [v, setV] as const; }',
+        'export function useFlag() { const [flag, setFlag] = useState(false); return { flag, set: setFlag }; }',
+      ].join('\n'),
+      'T.tsx': [
+        "import { useEffect } from 'react';",
+        "import { useFlag, useToggle } from './hooks';",
+        'export function T({ x }: { x: boolean }) {',
+        '  const [on, setOn] = useToggle();',
+        '  const { set: mark } = useFlag();',
+        '  useEffect(() => { setOn(x); }, [x]);',
+        '  useEffect(() => { mark(x); }, [x]);',
+        '  return null;',
+        '}',
+      ].join('\n'),
+    });
+    const toggle = confirmStateInEffect(src, 'T', 0);
+    expect(toggle).toMatchObject({ setter: 'setV', owner: 'useToggle', hook: 'useState', matchedByIndex: true });
+    expect(toggle?.call.getText()).toBe('setOn(x)');
+    expect(toggle?.file.path).toBe('T.tsx');
+    expect(confirmStateInEffect(src, 'T', 1)?.call.getText()).toBe('mark(x)');
+  });
+
+  it('reports the hook kind, so a reducer dispatch is told apart from a setter', () => {
+    const src = parse({
+      'R.tsx': [
+        "import { useEffect, useReducer } from 'react';",
+        'export function R({ v }: { v: number }) {',
+        '  const [s, dispatch] = useReducer(reducer, 0);',
+        "  useEffect(() => { dispatch({ type: 'set', v }); }, [v]);",
+        '  return null;',
+        '}',
+      ].join('\n'),
+    });
+    expect(confirmStateInEffect(src, 'R', 0)).toMatchObject({ hook: 'useReducer', setter: 'dispatch', state: 's' });
+  });
+});
+
+describe('componentAliases', () => {
+  it('knows a memo component by its variable and by the names it is imported under', () => {
+    const src = parse({
+      'List.tsx': [
+        "import { memo } from 'react';",
+        'export const ResultsList = memo(function List({ filters }: { filters: object }) { return <ul />; });',
+      ].join('\n'),
+      'Row.tsx': ["import { memo } from 'react';", 'export default memo(function Row({ style }: { style: object }) { return <li />; });'].join('\n'),
+      'App.tsx': [
+        "import { ResultsList as Results } from './List';",
+        "import Item from './Row';",
+        'export function App() { return <div><Results filters={{ a: 1 }} /><Item style={{ b: 2 }} /></div>; }',
+      ].join('\n'),
+    });
+    expect([...componentAliases(src, 'List')].sort()).toEqual(['List', 'Results', 'ResultsList']);
+    expect([...componentAliases(src, 'Row')].sort()).toEqual(['Item', 'Row']);
+    expect(findJsxProp(src, 'List', 'filters').map((m) => [m.file.path, m.line, m.valueKind])).toEqual([['App.tsx', 3, 'inline-object']]);
+    expect(findJsxProp(src, 'Row', 'style').map((m) => [m.file.path, m.line, m.valueKind])).toEqual([['App.tsx', 3, 'inline-object']]);
+  });
+});
+
 describe('findJsxProp', () => {
   it('finds the attribute line in the component that creates the element, not the fiber parent', () => {
     const files = reachableFrom(parseFiles(laggyFiles()), 'SearchPage.tsx');
@@ -149,6 +224,7 @@ describe('findJsxProp', () => {
     expect(kind('onD')).toBe('prop');
     expect(kind('onE')).toBe('inline-function');
     expect(kind('items')).toBe('other');
+    expect(findJsxProp(files, 'Row', 'onD')[0]?.fromProp).toEqual({ component: 'E', prop: 'onPick' });
   });
 
   it('keeps only files the entry imports', () => {

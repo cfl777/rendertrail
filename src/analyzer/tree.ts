@@ -34,13 +34,12 @@ export function buildTree(trace: RecordedTrace, commitIndex: number, timing: Tim
   if (!commit) return [];
   const rows: Row[] = [];
   const depthOf = new Map<string, number>();
-  const stack: string[] = [];
+  const depths: number[] = [];
   let skipUntil = -1;
 
   commit.rendered.forEach((r, i) => {
-    while (stack.length && stack.at(-1) !== r.parent) stack.pop();
-    const depth = stack.length;
-    stack.push(r.name);
+    const depth = r.parentIndex === null ? 0 : (depths[r.parentIndex] ?? 0) + 1;
+    depths[i] = depth;
     if (!depthOf.has(r.name)) depthOf.set(r.name, depth);
     if (i <= skipUntil) return; // folded into a memo-broken row above
 

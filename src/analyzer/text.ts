@@ -16,6 +16,8 @@ export interface TextInput {
   keystroke: KeystrokeView;
   runId: string;
   comparison?: Comparison;
+  /** Set when the run couldn't be stored: the reason. Then there is no run id to use as a baseline. */
+  saveError?: string;
 }
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -29,6 +31,10 @@ function rounded(n: number): string {
 function comparisonLines(c: Comparison, k: KeystrokeView): string[] {
   if (!c.found) return [c.message];
   const lines = [c.message];
+  if (!c.checked) {
+    if (c.changedFiles.length) lines.push(`Files changed since the baseline: ${c.changedFiles.join(', ')}.`);
+    return lines;
+  }
   if (c.before && c.after) {
     lines.push(
       `Before → now, per ${k.unit}: ${msText(c.before.msPerStep)} → ${msText(c.after.msPerStep)}; ` +
@@ -76,7 +82,9 @@ export function formatAnalysis(input: TextInput): string {
   const inSteps = input.steps.reduce((sum, s) => sum + s.commits.length, 0);
   lines.push(
     '',
-    `Run id: ${input.runId}. To check a fix, call inspect_render again with the changed files and baselineRunId "${input.runId}".`,
+    input.saveError
+      ? `This run couldn't be saved (${input.saveError}), so it can't be used as a baseline for a later run.`
+      : `Run id: ${input.runId}. To check a fix, call inspect_render again with the changed files and baselineRunId "${input.runId}".`,
     '',
     `Recording: ${summary.entry} (${exportLabel}), ${summary.runs} runs in headless ${summary.browser}, React ${summary.reactVersion}. ` +
       `Interaction: ${describeSteps(summary.steps)}.`,
