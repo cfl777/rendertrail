@@ -5,7 +5,17 @@ import { chromium, type Browser, type Page } from 'playwright-core';
 import type { RecordedTrace, Step } from '../shared/types.js';
 import { DEFAULT_TYPE_DELAY_MS, LIMITS, MAX_PAGE_ERRORS } from './limits.js';
 
-const ORIGIN = 'http://rendertrail.local';
+const ORIGIN = 'http://recorder.local';
+
+/**
+ * Defence in depth beside the context routes: no DNS for any host (the in-memory routes are
+ * fulfilled before DNS), and no WebRTC/STUN over UDP.
+ */
+const LAUNCH_ARGS = [
+  '--host-resolver-rules=MAP * ~NOTFOUND',
+  '--force-webrtc-ip-handling-policy',
+  '--webrtc-ip-handling-policy=disable_non_proxied_udp',
+];
 const HTML =
   '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div><script src="/app.js"></script></body></html>';
 
@@ -28,13 +38,13 @@ export interface LaunchedBrowser {
 export async function launchBrowser(): Promise<LaunchedBrowser> {
   let chromeError = '';
   try {
-    const browser = await chromium.launch({ channel: 'chrome' });
+    const browser = await chromium.launch({ channel: 'chrome', args: LAUNCH_ARGS });
     return { browser, label: `Chrome ${browser.version()}` };
   } catch (err) {
     chromeError = err instanceof Error ? (err.message.split('\n')[0] ?? err.message) : 'Unknown error';
   }
   try {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ args: LAUNCH_ARGS });
     return { browser, label: `Chromium ${browser.version()}` };
   } catch (err) {
     const chromiumError = err instanceof Error ? (err.message.split('\n')[0] ?? err.message) : 'Unknown error';
@@ -58,7 +68,9 @@ function isTrace(value: unknown): value is RecordedTrace {
     'commits' in value &&
     Array.isArray(value.commits) &&
     'errors' in value &&
-    Array.isArray(value.errors)
+    Array.isArray(value.errors) &&
+    'truncated' in value &&
+    typeof value.truncated === 'boolean'
   );
 }
 
@@ -80,14 +92,8 @@ async function playStep(page: Page, step: Step): Promise<void> {
   }
 }
 
-async function recordInPage(page: Page, app: string, instrumentation: string, steps: Step[], pageErrors: string[]): Promise<RecordedTrace> {
+async function recordInPage(page: Page, instrumentation: string, steps: Step[], pageErrors: string[]): Promise<RecordedTrace> {
   await page.addInitScript({ content: instrumentation });
-  await page.route('**/*', (route) => {
-    const url = route.request().url();
-    if (url === `${ORIGIN}/`) return route.fulfill({ contentType: 'text/html', body: HTML });
-    if (url === `${ORIGIN}/app.js`) return route.fulfill({ contentType: 'text/javascript', body: app });
-    return route.abort(); // the recorded code gets no network access
-  });
   await page.goto(`${ORIGIN}/`);
   try {
     await page.waitForFunction('window.__RT__ && window.__RT__.commits.length > 0', null, {
@@ -113,20 +119,28 @@ async function recordInPage(page: Page, app: string, instrumentation: string, st
     }
   }
 
-  const trace: unknown = await page.evaluate('({ commits: window.__RT__.commits, errors: window.__RT__.errors })');
+  const trace: unknown = await page.evaluate('({ commits: window.__RT__.commits, errors: window.__RT__.errors, truncated: window.__RT__.truncated })');
   if (!isTrace(trace)) throw new RecorderError('mount', 'The page instrumentation returned no trace.', pageErrors);
   return trace;
 }
 
 /** One run in a fresh browser context, limited to LIMITS.runTimeoutMs. */
 export async function runOnce(browser: Browser, app: string, instrumentation: string, steps: Step[]): Promise<RunOutput> {
-  const context = await browser.newContext();
+  // Context-wide, so popups (window.open) get the same rules; service workers can't bypass routes.
+  const context = await browser.newContext({ serviceWorkers: 'block' });
   const pageErrors: string[] = [];
   const keep = (text: string): void => {
     if (pageErrors.length < MAX_PAGE_ERRORS) pageErrors.push(text);
   };
   let timer: NodeJS.Timeout | undefined;
   try {
+    await context.route('**/*', (route) => {
+      const url = route.request().url();
+      if (url === `${ORIGIN}/`) return route.fulfill({ contentType: 'text/html', body: HTML });
+      if (url === `${ORIGIN}/app.js`) return route.fulfill({ contentType: 'text/javascript', body: app });
+      return route.abort(); // the recorded code gets no network access
+    });
+    await context.routeWebSocket(/.*/, (ws) => ws.close());
     const page = await context.newPage();
     page.on('pageerror', (error) => keep(`Uncaught: ${error.message}`));
     page.on('console', (message) => {
@@ -138,7 +152,7 @@ export async function runOnce(browser: Browser, app: string, instrumentation: st
         LIMITS.runTimeoutMs,
       );
     });
-    const trace = await Promise.race([recordInPage(page, app, instrumentation, steps, pageErrors), timeout]);
+    const trace = await Promise.race([recordInPage(page, instrumentation, steps, pageErrors), timeout]);
     return { trace, pageErrors };
   } finally {
     clearTimeout(timer);
