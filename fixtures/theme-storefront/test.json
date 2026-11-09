@@ -1,0 +1,14 @@
+{
+  "entry": "Storefront.tsx",
+  "exportName": "default",
+  "steps": [
+    { "action": "click", "target": "button[aria-label=\"Toggle theme\"]" },
+    { "action": "wait", "ms": 150 },
+    { "action": "click", "target": "button[aria-label=\"Toggle theme\"]" },
+    { "action": "wait", "ms": 150 },
+    { "action": "click", "target": "button[aria-label=\"Toggle theme\"]" },
+    { "action": "wait", "ms": 150 },
+    { "action": "click", "target": "button[aria-label=\"Toggle theme\"]" },
+    { "action": "wait", "ms": 150 }
+  ]
+}
