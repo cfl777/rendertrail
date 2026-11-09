@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build, typecheck, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build # runs typecheck first
+      - run: npm test
+
+  golden:
+    name: Golden tests (React ${{ matrix.react }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        react: ['18.3.1', '19.3.1']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The recorder bundles the React in node_modules. The lockfile has 19.3.1 (also used by the
+      # card); other versions replace it for this job only, without touching package.json.
+      - name: Install React ${{ matrix.react }}
+        if: matrix.react != '19.3.1'
+        run: npm install --no-save react@${{ matrix.react }} react-dom@${{ matrix.react }}
+      # playwright-core's own CLI installs the Chromium build that matches its version. The recorder
+      # tries the installed Chrome first and falls back to this.
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:golden
+        env:
+          EXPECT_REACT_VERSION: ${{ matrix.react }}
