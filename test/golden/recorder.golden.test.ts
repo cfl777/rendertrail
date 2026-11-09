@@ -75,6 +75,86 @@ describe('recorder behaviour', () => {
     expect(summary.commits.map((c) => c.trigger)).toEqual(['mount', 'input', 'input']);
   });
 
+  it('renders the children of a stubbed provider and lets stubbed hooks be destructured', async () => {
+    const content = [
+      `import { useState } from 'react';`,
+      `import { ThemeProvider } from 'styled-components';`,
+      `import { useQuery } from '@tanstack/react-query';`,
+      `import useStore from './store/useStore';`,
+      ``,
+      `export default function App() {`,
+      `  const [text, setText] = useState('');`,
+      `  const { data, isLoading } = useQuery({ queryKey: ['x'] });`,
+      `  const [value, setValue] = useStore();`,
+      `  return (`,
+      `    <ThemeProvider theme={{ dark: true }}>`,
+      `      <input aria-label="q" value={text} onChange={(e) => setText(e.target.value)} />`,
+      `    </ThemeProvider>`,
+      `  );`,
+      `}`,
+    ].join('\n');
+    const result = await recordRender(
+      InspectRenderInputSchema.parse({
+        files: [{ path: 'App.tsx', content }],
+        entry: 'App.tsx',
+        steps: [{ action: 'type', target: 'input[aria-label="q"]', text: 'ab', delayMs: 50 }],
+      }),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.error, null, 2));
+    expect(result.summary.stubs).toEqual([
+      './store/useStore (imported by App.tsx)',
+      '@tanstack/react-query (imported by App.tsx)',
+      'styled-components (imported by App.tsx)',
+    ]);
+    expect(result.summary.pageErrors).toEqual([]);
+    expect(result.summary.commitCount).toBe(3);
+    expect(result.summary.commits.map((c) => c.trigger)).toEqual(['mount', 'input', 'input']);
+    expect(result.summary.rendersAfterMount.App).toBe(2);
+  });
+
+  it('records memo(Comp, compare) and memo(forwardRef(...)) once per render', async () => {
+    const content = [
+      `import { forwardRef, memo, useState } from 'react';`,
+      ``,
+      `const Row = memo(function Row({ v }: { v: number }) {`,
+      `  return <li>{v}</li>;`,
+      `}, (a, b) => a.v === b.v);`,
+      ``,
+      `const Field = memo(forwardRef<HTMLInputElement, { v: number }>(function Field({ v }, ref) {`,
+      `  return <input ref={ref} readOnly value={v} />;`,
+      `}));`,
+      ``,
+      `export function List() {`,
+      `  const [n, setN] = useState(0);`,
+      `  return (`,
+      `    <div>`,
+      `      <button id="inc" onClick={() => setN(n + 1)}>inc</button>`,
+      `      <Row v={n} />`,
+      `      <Field v={n} />`,
+      `    </div>`,
+      `  );`,
+      `}`,
+    ].join('\n');
+    const result = await recordRender(
+      InspectRenderInputSchema.parse({
+        files: [{ path: 'List.tsx', content }],
+        entry: 'List.tsx',
+        exportName: 'List',
+        steps: [{ action: 'click', target: '#inc' }],
+      }),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.error, null, 2));
+    const update = result.traces[0]!.commits[1]!;
+    expect(update.rendered.map((r) => r.name)).toEqual(['List', 'Row', 'Field']);
+    for (const name of ['Row', 'Field']) {
+      const entry = update.rendered.find((r) => r.name === name);
+      expect(entry?.memo, name).toBe(true);
+      expect(entry?.parent, name).toBe('List');
+      expect(entry?.changedProps.map((p) => p.name), name).toEqual(['v']);
+    }
+    expect(result.summary.rendersAfterMount).toEqual({ List: 1, Row: 1, Field: 1 });
+  });
+
   it('returns a step error when a selector matches nothing', async () => {
     const result = await recordRender(input([{ action: 'click', target: '#nope' }]));
     expect(result.ok).toBe(false);

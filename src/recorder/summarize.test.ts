@@ -28,6 +28,7 @@ function rows(n: number, phase: RenderedComponent['phase']): RenderedComponent[]
 function trace(inputMs: number, rowCount = 2): RecordedTrace {
   return {
     errors: [],
+    truncated: false,
     commits: [
       commit(0, 'mount', 10, [comp('Page', { phase: 'mount' }), comp('Side', { phase: 'mount', memo: true }), ...rows(rowCount, 'mount')]),
       commit(1, 'input', inputMs, [comp('Page', { changedState: [{ hook: 0, from: '""', to: '"h"' }] }), ...rows(rowCount, 'update')]),
@@ -93,6 +94,12 @@ describe('summarize', () => {
     expect(summary.timings.mountMs).toBe(10);
     expect(summary.timings.followUpCommits).toBe(1);
     expect(rendersAfterMount(trace(5))).toEqual({ Page: 1, Side: 0, Row: 2, Box: 1 });
+  });
+
+  it('reports truncation from any run', () => {
+    const cut = { ...trace(5), truncated: true };
+    expect(summarize([trace(5), cut], meta).truncated).toBe(true);
+    expect(summarize([trace(5)], meta).truncated).toBe(false);
   });
 
   it('marks unstable runs', () => {

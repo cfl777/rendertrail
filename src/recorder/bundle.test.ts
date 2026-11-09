@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bundleApp, findFile, namedImportsOf, normalizePath } from './bundle.js';
+import { bundleApp, findAliased, findFile, namedImportsOf, normalizePath } from './bundle.js';
 
 describe('normalizePath / findFile', () => {
   it('normalizes separators and leading ./ or /', () => {
@@ -15,6 +15,42 @@ describe('normalizePath / findFile', () => {
     expect(findFile(files, 'a')).toBe('a.tsx');
     expect(findFile(files, './lib')).toBe('lib/index.ts');
     expect(findFile(files, 'nope')).toBeUndefined();
+  });
+});
+
+describe('findFile with .js imports and findAliased', () => {
+  const files = new Map([
+    ['src/components/Button.tsx', ''],
+    ['lib/util.ts', ''],
+    ['hooks.ts', ''],
+  ]);
+
+  it('maps .js, .jsx and .mjs imports to the .ts/.tsx source', () => {
+    expect(findFile(files, 'lib/util.js')).toBe('lib/util.ts');
+    expect(findFile(files, 'src/components/Button.jsx')).toBe('src/components/Button.tsx');
+    expect(findFile(files, 'hooks.mjs')).toBe('hooks.ts');
+  });
+
+  it('resolves @/ and ~/ aliases with and without a src/ prefix', () => {
+    expect(findAliased(files, '@/components/Button')).toBe('src/components/Button.tsx');
+    expect(findAliased(files, '~/src/components/Button')).toBe('src/components/Button.tsx');
+    expect(findAliased(files, '@/lib/util')).toBe('lib/util.ts');
+    expect(findAliased(files, '@/src/lib/util')).toBe('lib/util.ts');
+    expect(findAliased(files, '@/nope')).toBeUndefined();
+    expect(findAliased(files, '@scope/pkg')).toBeUndefined();
+  });
+
+  it('bundles an aliased import instead of stubbing it', async () => {
+    const result = await bundleApp({
+      files: [
+        { path: 'src/App.tsx', content: `import { label } from '@/text.js';
+export default function App() { return <p>{label}</p>; }` },
+        { path: 'src/text.ts', content: `export const label = 'hi';` },
+      ],
+      entry: 'src/App.tsx',
+      exportName: 'default',
+    });
+    expect(result.ok && result.stubs).toEqual([]);
   });
 });
 

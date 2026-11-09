@@ -102,6 +102,8 @@ export interface RecordedTrace {
   commits: RecordedCommit[];
   /** Errors thrown inside the instrumentation itself. */
   errors: string[];
+  /** True when commits beyond the cap (500) were dropped. */
+  truncated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +138,8 @@ export interface TraceSummary {
   stable: boolean;
   instability: string[];
   commitCount: number;
+  /** True when any run hit the commit cap and later commits were dropped. */
+  truncated: boolean;
   /** Structure from the first run, timings as medians over all runs. */
   commits: CommitSummary[];
   /** Renders per component after the mount commit; components seen at mount that never re-rendered are 0. */

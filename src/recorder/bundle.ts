@@ -13,8 +13,8 @@ const require = createRequire(import.meta.url);
 const FILE_NS = 'rt-file';
 const STUB_NS = 'rt-stub';
 const EMPTY_NS = 'rt-empty';
-const ENTRY_ID = 'rendertrail:entry';
-const ENTRY_FILE = '__rendertrail_main__.tsx';
+const ENTRY_ID = 'virtual:entry';
+const ENTRY_FILE = '__entry__.tsx';
 
 const EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.cjs', '.json'];
 const REACT_IMPORT = /^(react|react-dom)(\/.*)?$/;
@@ -58,11 +58,34 @@ export function normalizePath(p: string): string {
     .replace(/^\/+/, '');
 }
 
-/** Finds a file the way a bundler would: exact, with an extension, or as a folder index. */
+/**
+ * Finds a file the way a bundler would: exact, with an extension, or as a folder index. A `.js`,
+ * `.jsx` or `.mjs` import also matches the `.ts`/`.tsx` source (TypeScript's ESM convention).
+ */
 export function findFile(files: ReadonlyMap<string, string>, wanted: string): string | undefined {
   const base = normalizePath(wanted);
-  const candidates = [base, ...EXTENSIONS.map((ext) => base + ext), ...EXTENSIONS.map((ext) => `${base}/index${ext}`)];
+  const jsExt = /\.(js|jsx|mjs)$/.exec(base);
+  const withoutJs = jsExt ? base.slice(0, -jsExt[0].length) : null;
+  const candidates = [
+    base,
+    ...(withoutJs ? [`${withoutJs}.ts`, `${withoutJs}.tsx`] : []),
+    ...EXTENSIONS.map((ext) => base + ext),
+    ...EXTENSIONS.map((ext) => `${base}/index${ext}`),
+  ];
   return candidates.find((candidate) => files.has(candidate));
+}
+
+/** `@/x` and `~/x` path aliases, tried as `x`, `src/x`, and `x` without a leading `src/`. */
+export function findAliased(files: ReadonlyMap<string, string>, spec: string): string | undefined {
+  const alias = /^[@~]\/(.+)$/.exec(spec);
+  if (!alias?.[1]) return undefined;
+  const rest = normalizePath(alias[1]);
+  const candidates = [rest, `src/${rest}`, rest.replace(/^src\//, '')];
+  for (const candidate of candidates) {
+    const found = findFile(files, candidate);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function loaderFor(file: string): Loader {
@@ -90,25 +113,38 @@ export function namedImportsOf(spec: string, sources: Iterable<string>): string[
   return [...names].sort();
 }
 
-// A harmless stand-in: callable as a component or function (returns null), and any property
-// is another stand-in. React sees a plain function component (no prototype, no $$typeof).
+// A harmless stand-in. As a component it renders its children (so stubbed providers and wrappers
+// don't hide the app) or nothing; as a hook (useX) it returns another stand-in, so destructuring
+// works. Any property is another stand-in. React sees a plain function component (no prototype,
+// no $$typeof).
 const STUB_RUNTIME = `
 const UNDEFINED_KEYS = new Set(['prototype', '$$typeof', 'then', 'toJSON', '__esModule', 'defaultProps',
   'propTypes', 'contextTypes', 'childContextTypes', 'contextType', 'getDerivedStateFromProps', 'compare',
   'render', 'type', '_context', '_payload', '_init']);
-function makeStub(label) {
+const HOOK_NAME = /^use[A-Z]/;
+function makeStub(label, isHook) {
   const cache = new Map();
   return new Proxy(() => null, {
     get(target, key) {
-      if (typeof key === 'symbol') return key === Symbol.toPrimitive ? () => '' : undefined;
+      if (key === Symbol.toPrimitive) return () => '';
+      if (key === Symbol.iterator) {
+        // Array destructuring of a hook result: a few stand-ins, finite so spreading can't hang.
+        return function* () {
+          for (let i = 0; i < 8; i += 1) yield makeStub(label + '[' + i + ']', false);
+        };
+      }
+      if (typeof key === 'symbol') return undefined;
       if (key === 'displayName' || key === 'name') return label;
       if (key === 'toString' || key === 'valueOf') return () => '';
       if (UNDEFINED_KEYS.has(key)) return undefined;
-      if (!cache.has(key)) cache.set(key, makeStub(label + '.' + key));
+      if (!cache.has(key)) cache.set(key, makeStub(label + '.' + key, HOOK_NAME.test(key)));
       return cache.get(key);
     },
-    apply() {
-      return null;
+    apply(target, thisArg, args) {
+      if (isHook) return makeStub(label + '()', false);
+      const props = args[0];
+      const children = props !== null && typeof props === 'object' ? props.children : undefined;
+      return children === undefined || typeof children === 'function' ? null : children;
     },
   });
 }
@@ -118,7 +154,7 @@ function stubModule(spec: string, names: string[]): string {
   const label = `Stub(${spec})`;
   return [
     STUB_RUNTIME,
-    `const stub = makeStub(${JSON.stringify(label)});`,
+    `const stub = makeStub(${JSON.stringify(label)}, ${/^use[A-Z]/.test(path.posix.basename(spec))});`,
     'export default stub;',
     ...names.map((name) => `export const ${name} = stub[${JSON.stringify(name)}];`),
   ].join('\n');
@@ -145,7 +181,7 @@ function entrySource(req: BundleRequest, entryPath: string): string {
 function virtualFiles(req: BundleRequest, entryPath: string, stubs: Set<string>): Plugin {
   const files = new Map(req.files.map((file) => [normalizePath(file.path), file.content]));
   return {
-    name: 'rendertrail-virtual-files',
+    name: 'virtual-files',
     setup(pluginBuild) {
       pluginBuild.onResolve({ filter: new RegExp(`^${ENTRY_ID}$`) }, () => ({ path: ENTRY_FILE, namespace: FILE_NS }));
 
@@ -161,6 +197,8 @@ function virtualFiles(req: BundleRequest, entryPath: string, stubs: Set<string>)
           const found = findFile(files, wanted);
           if (found) return { path: found, namespace: FILE_NS };
         }
+        const aliased = findAliased(files, args.path);
+        if (aliased) return { path: aliased, namespace: FILE_NS };
         stubs.add(`${args.path} (imported by ${args.importer})`);
         return { path: args.path, namespace: STUB_NS };
       });

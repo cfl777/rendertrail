@@ -123,6 +123,7 @@ export function summarize(traces: readonly RecordedTrace[], meta: SummaryMeta): 
     stable: instability.length === 0,
     instability,
     commitCount: first.commits.length,
+    truncated: traces.some((trace) => trace.truncated),
     commits,
     rendersAfterMount: rendersAfterMount(first),
     timings: {

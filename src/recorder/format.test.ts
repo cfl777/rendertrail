@@ -15,6 +15,7 @@ const summary: TraceSummary = {
   stable: true,
   instability: [],
   commitCount: 1,
+  truncated: false,
   commits: [
     { index: 0, trigger: 'mount', renderMs: 25.5, renderMsRuns: [25, 25.5, 26], rendered: [{ name: 'Row', count: 200, memo: false, notes: [] }] },
   ],
@@ -43,6 +44,16 @@ describe('format', () => {
     const text = formatSummary({ ...summary, stable: false, instability: ['Commit #0 differs'] });
     expect(text).toContain('UNSTABLE');
     expect(text).toContain('  - Commit #0 differs');
+  });
+
+  it('lists at most 40 commit lines and says when recording was truncated', () => {
+    const commit = summary.commits[0]!;
+    const commits = Array.from({ length: 45 }, (_, index) => ({ ...commit, index }));
+    const text = formatSummary({ ...summary, commits, commitCount: 45, truncated: true });
+    expect(text).toContain('#39 ');
+    expect(text).not.toContain('#40 ');
+    expect(text).toContain('… 5 more commits');
+    expect(text).toContain('Recording stopped after 45 commits');
   });
 
   it('explains errors and lists stubs', () => {

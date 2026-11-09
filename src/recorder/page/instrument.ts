@@ -53,8 +53,10 @@ declare global {
 /** A commit closer than this to the previous one counts as a follow-up (spike heuristic, Phase 2 replaces it). */
 const FOLLOW_UP_GAP_MS = 20;
 const PREVIEW_CHARS = 40;
+/** Commits after this many are dropped (and the trace marked truncated), to bound the output. */
+const MAX_COMMITS = 500;
 
-const RT: RecordedTrace = { commits: [], errors: [] };
+const RT: RecordedTrace = { commits: [], errors: [], truncated: false };
 window.__RT__ = RT;
 
 // Count user input so each commit can be tagged as caused by input or not.
@@ -63,8 +65,7 @@ let inputSeq = 0;
 const countInput = (): void => {
   inputSeq += 1;
 };
-window.addEventListener('input', countInput, true);
-window.addEventListener('click', countInput, true);
+for (const type of ['input', 'keydown', 'click', 'pointerdown']) window.addEventListener(type, countInput, true);
 
 let lastInputSeq = 0;
 let lastDoneAt = -Infinity;
@@ -72,10 +73,18 @@ let lastDoneAt = -Infinity;
 instrument({
   onCommitFiberRoot(_rendererID, root) {
     try {
+      if (RT.commits.length >= MAX_COMMITS) {
+        RT.truncated = true;
+        return;
+      }
       const at = performance.now();
       const fibers: { fiber: RtFiber; phase: 'mount' | 'update' }[] = [];
       traverseRenderedFibers(root, (fiber, phase) => {
-        if (phase !== 'unmount' && isCompositeFiber(fiber)) fibers.push({ fiber: asRt(fiber), phase });
+        // memo(Comp, compare) and memo(forwardRef(...)) add a MemoComponent fiber above the real
+        // one. Skip the wrapper; its child is recorded as the memo component.
+        if (phase !== 'unmount' && isCompositeFiber(fiber) && !isMemoWrapper(asRt(fiber))) {
+          fibers.push({ fiber: asRt(fiber), phase });
+        }
       });
 
       const renderedSet = new Set(fibers.map(({ fiber }) => fiber));
@@ -84,16 +93,19 @@ instrument({
         const tags = getReactWorkTagsForFiber(fiber as unknown as Fiber);
         const parentFiber = nearestComposite(fiber.return);
         const prev = phase === 'update' ? fiber.alternate : null;
+        const wrapper = fiber.return && isMemoWrapper(fiber.return) ? fiber.return : null;
+        const propsPrev = wrapper ? (phase === 'update' ? wrapper.alternate : null) : prev;
+        const propsNext = wrapper ?? fiber;
         // Time for the topmost rendered components adds up to the commit's render time.
         if (!parentFiber || !renderedSet.has(parentFiber)) renderMs += fiber.actualDuration ?? 0;
         return {
           name: nameOf(fiber),
           phase,
-          memo: fiber.tag === tags.MemoComponent || fiber.tag === tags.SimpleMemoComponent,
+          memo: wrapper !== null || fiber.tag === tags.MemoComponent || fiber.tag === tags.SimpleMemoComponent,
           parent: parentFiber ? nameOf(parentFiber) : null,
           selfMs: round(selfDuration(fiber)),
           totalMs: round(fiber.actualDuration ?? 0),
-          changedProps: prev ? diffProps(prev.memoizedProps, fiber.memoizedProps) : [],
+          changedProps: propsPrev ? diffProps(propsPrev.memoizedProps, propsNext.memoizedProps) : [],
           changedState: prev ? diffHooks(prev.memoizedState, fiber.memoizedState) : [],
           changedContext: prev ? diffContext(prev, fiber) : [],
         };
@@ -124,13 +136,17 @@ function asRt(fiber: Fiber): RtFiber {
   return fiber as unknown as RtFiber;
 }
 
+function isMemoWrapper(fiber: RtFiber): boolean {
+  return fiber.tag === getReactWorkTagsForFiber(fiber as unknown as Fiber).MemoComponent;
+}
+
 function nameOf(fiber: RtFiber): string {
   return getDisplayName(getType(fiber.type)) || getDisplayName(fiber.type) || 'Anonymous';
 }
 
 function nearestComposite(start: RtFiber | null): RtFiber | null {
   let fiber = start;
-  while (fiber && !isCompositeFiber(fiber as unknown as Fiber)) fiber = fiber.return;
+  while (fiber && (!isCompositeFiber(fiber as unknown as Fiber) || isMemoWrapper(fiber))) fiber = fiber.return;
   return fiber;
 }
 
@@ -198,6 +214,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function sameValue(a: unknown, b: unknown, depth = 0): boolean {
   if (Object.is(a, b)) return true;
   if (typeof a !== typeof b || a === null || b === null) return false;
+  // Spike shortcut, kept for now: two closures with the same source text can capture different
+  // values, so Rule 1 (Phase 2) must not trust sameValue for functions.
   if (typeof a === 'function' && typeof b === 'function') return a.toString() === b.toString();
   if (!isRecord(a) || !isRecord(b) || depth > 3) return false;
   if ('$$typeof' in a || '$$typeof' in b) return false; // React elements: treat as changed

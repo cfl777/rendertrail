@@ -3,6 +3,9 @@
  */
 import type { RecordError, Step, TraceSummary } from '../shared/types.js';
 
+/** Commit lines listed in the text; the rest are only counted. */
+const MAX_COMMIT_LINES = 40;
+
 function ms(value: number): string {
   return `${value.toFixed(2)} ms`;
 }
@@ -23,7 +26,7 @@ export function describeSteps(steps: readonly Step[]): string {
 function stubLines(stubs: readonly string[]): string[] {
   if (stubs.length === 0) return ['Stubbed imports: none.'];
   return [
-    `Stubbed imports (not in the files, replaced with an empty component that renders nothing; send these files if they matter):`,
+    `Stubbed imports (not in the files; replaced with stand-ins: a component renders only its children, a hook returns an empty stand-in; send these files if they matter):`,
     ...stubs.map((stub) => `  - ${stub}`),
   ];
 }
@@ -41,7 +44,7 @@ export function formatSummary(summary: TraceSummary, notes: readonly string[] = 
     `${summary.commitCount} commits (render time is the median of ${summary.runs} runs):`,
   ];
 
-  for (const commit of summary.commits) {
+  for (const commit of summary.commits.slice(0, MAX_COMMIT_LINES)) {
     const parts = commit.rendered.map((g) => {
       const name = `${g.name}${g.count > 1 ? ` ×${g.count}` : ''}${g.memo ? ' [memo]' : ''}`;
       return g.notes.length ? `${name} {${g.notes.join('; ')}}` : name;
@@ -49,6 +52,12 @@ export function formatSummary(summary: TraceSummary, notes: readonly string[] = 
     lines.push(
       `#${String(commit.index).padEnd(3)} ${commit.trigger.padEnd(9)} ${ms(commit.renderMs).padStart(10)}   ${parts.join(', ') || '(nothing rendered)'}`,
     );
+  }
+
+  const hidden = summary.commits.length - MAX_COMMIT_LINES;
+  if (hidden > 0) lines.push(`… ${hidden} more commits (counted below, not listed)`);
+  if (summary.truncated) {
+    lines.push(`Recording stopped after ${summary.commitCount} commits; later commits were not recorded.`);
   }
 
   const renders = Object.entries(summary.rendersAfterMount).map(([name, n]) => `${name} ${n}`);
