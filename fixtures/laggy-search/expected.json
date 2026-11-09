@@ -1,42 +1,58 @@
 {
-  "$comment": "Machine-readable copy of EXPECTED.md (the source of truth). Render and commit counts only; triggers and timings are not asserted exactly.",
+  "$comment": "Machine-readable copy of EXPECTED.md (the source of truth). Render and commit counts are asserted exactly. Of the trigger column, only mount and input are asserted exactly (they come from counted input events); follow-up and later come from a timing heuristic, so the test only checks they aren't input. Timings are not asserted here.",
   "test": "test.json",
   "variants": {
     "SearchPage.tsx": {
       "commitCount": 12,
       "commits": [
-        { "index": 0, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200, "Sidebar": 1 } },
-        { "index": 1, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
-        { "index": 2, "renders": { "SearchBox": 1 } },
-        { "index": 3, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
-        { "index": 4, "renders": { "SearchBox": 1 } },
-        { "index": 5, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
-        { "index": 6, "renders": { "SearchBox": 1 } },
-        { "index": 7, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
-        { "index": 8, "renders": { "SearchBox": 1 } },
-        { "index": 9, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
-        { "index": 10, "renders": { "SearchBox": 1 } },
-        { "index": 11, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 50 } }
+        { "index": 0, "trigger": "mount", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200, "Sidebar": 1 } },
+        { "index": 1, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
+        { "index": 2, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 3, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
+        { "index": 4, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 5, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
+        { "index": 6, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 7, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
+        { "index": 8, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 9, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200 } },
+        { "index": 10, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 11, "trigger": "later", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 50 } }
       ],
-      "rendersAfterMount": { "SearchPage": 6, "Layout": 6, "Header": 6, "SearchBox": 11, "ResultsList": 6, "ResultRow": 1050, "Sidebar": 0 }
+      "rendersAfterMount": {
+        "SearchPage": 6,
+        "Layout": 6,
+        "Header": 6,
+        "SearchBox": 11,
+        "ResultsList": 6,
+        "ResultRow": 1050,
+        "Sidebar": 0
+      }
     },
     "SearchPage.fixed.tsx": {
       "commitCount": 12,
       "commits": [
-        { "index": 0, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200, "Sidebar": 1 } },
-        { "index": 1, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
-        { "index": 2, "renders": { "SearchBox": 1 } },
-        { "index": 3, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
-        { "index": 4, "renders": { "SearchBox": 1 } },
-        { "index": 5, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
-        { "index": 6, "renders": { "SearchBox": 1 } },
-        { "index": 7, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
-        { "index": 8, "renders": { "SearchBox": 1 } },
-        { "index": 9, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
-        { "index": 10, "renders": { "SearchBox": 1 } },
-        { "index": 11, "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 50 } }
+        { "index": 0, "trigger": "mount", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 200, "Sidebar": 1 } },
+        { "index": 1, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
+        { "index": 2, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 3, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
+        { "index": 4, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 5, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
+        { "index": 6, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 7, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
+        { "index": 8, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 9, "trigger": "input", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1 } },
+        { "index": 10, "trigger": "follow-up", "renders": { "SearchBox": 1 } },
+        { "index": 11, "trigger": "later", "renders": { "SearchPage": 1, "Layout": 1, "Header": 1, "SearchBox": 1, "ResultsList": 1, "ResultRow": 50 } }
       ],
-      "rendersAfterMount": { "SearchPage": 6, "Layout": 6, "Header": 6, "SearchBox": 11, "ResultsList": 1, "ResultRow": 50, "Sidebar": 0 }
+      "rendersAfterMount": {
+        "SearchPage": 6,
+        "Layout": 6,
+        "Header": 6,
+        "SearchBox": 11,
+        "ResultsList": 1,
+        "ResultRow": 50,
+        "Sidebar": 0
+      }
     }
   }
 }

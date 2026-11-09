@@ -9,7 +9,7 @@ Needs Node 22 or later.
 npm install
 npm run build          # card -> dist/card.html, server -> dist/server.js, dist/instrument.js
 npm test               # unit tests
-npm run test:golden    # golden tests: records fixtures/ in your installed Chrome
+npm run test:golden    # builds, then golden tests: records fixtures/ in your installed Chrome
 node dist/server.js    # the MCP server over stdio
 npm run start:http     # the MCP server over HTTP, for the ext-apps basic-host
 cd spike && npm install && RT_CHANNEL=chrome npm run record   # the recorder spike (Git Bash)

@@ -1,7 +1,8 @@
 /**
  * Golden test: records fixtures/laggy-search through the real recorder (headless Chrome) and checks
  * render and commit counts exactly against expected.json (a copy of EXPECTED.md). Timings are only
- * checked as loose ranges; triggers aren't checked (the follow-up/later gap heuristic is flaky).
+ * checked as loose ranges. Triggers: mount and input are exact (counted input events); follow-up
+ * and later come from a flaky gap heuristic, so they're only checked not to be input (Phase 2 tightens this).
  */
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -14,7 +15,7 @@ const FIXTURE = fileURLToPath(new URL('../../fixtures/laggy-search/', import.met
 
 interface ExpectedVariant {
   commitCount: number;
-  commits: { index: number; renders: Record<string, number> }[];
+  commits: { index: number; trigger: string; renders: Record<string, number> }[];
   rendersAfterMount: Record<string, number>;
 }
 
@@ -62,6 +63,7 @@ describe('laggy-search golden test', async () => {
       expect(summary.pageErrors).toEqual([]);
       expect(summary.instability).toEqual([]);
       expect(summary.stable).toBe(true);
+      expect(summary.truncated).toBe(false);
 
       // Every run, not only the first, must match exactly.
       expect(traces).toHaveLength(3);
@@ -69,7 +71,16 @@ describe('laggy-search golden test', async () => {
         expect(trace.commits).toHaveLength(want.commitCount);
       }
       expect(summary.commitCount).toBe(want.commitCount);
-      expect(summary.commits.map((c) => ({ index: c.index, renders: countsByName(c.rendered) }))).toEqual(want.commits);
+      expect(summary.commits.map((c) => ({ index: c.index, renders: countsByName(c.rendered) }))).toEqual(
+        want.commits.map(({ index, renders }) => ({ index, renders })),
+      );
+      for (const trace of traces) {
+        trace.commits.forEach((commit, i) => {
+          const wanted = want.commits[i]!.trigger;
+          if (wanted === 'mount' || wanted === 'input') expect(commit.trigger, `commit #${i}`).toBe(wanted);
+          else expect(['follow-up', 'later'], `commit #${i}`).toContain(commit.trigger);
+        });
+      }
       expect(summary.rendersAfterMount).toEqual(want.rendersAfterMount);
 
       const [low, high] = INPUT_MEDIAN_MS[entry] ?? [0, Infinity];

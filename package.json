@@ -16,7 +16,7 @@
     "build:instrument": "esbuild src/recorder/page/instrument.ts --bundle --platform=browser --format=iife --target=es2022 --minify-syntax --keep-names --outfile=dist/instrument.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/recorder/page/tsconfig.json && tsc -p ui/tsconfig.json",
     "test": "vitest run",
-    "test:golden": "vitest run --config vitest.golden.config.ts",
+    "test:golden": "npm run build && vitest run --config vitest.golden.config.ts",
     "start": "node dist/server.js",
     "start:http": "node dist/server.js --http"
   },
