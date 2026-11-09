@@ -1,0 +1,50 @@
+/*
+ * Plain CSS on the host's style variables (HANDOFF.md §8). The fallbacks only
+ * apply when a host sends no variables (for example a bare browser tab); colors
+ * fall back to CSS system colors, never hard-coded values.
+ */
+:root {
+  color-scheme: light dark;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+  --font-text-md-size: 1rem;
+  --font-text-md-line-height: 1.5;
+  --font-text-sm-size: 0.875rem;
+  --font-heading-md-size: 1.125rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--font-text-md-size);
+  line-height: var(--font-text-md-line-height);
+  color: var(--color-text-primary, CanvasText);
+}
+
+.card {
+  padding: 12px 0;
+}
+
+.caption {
+  margin: 0;
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-secondary, GrayText);
+}
+
+.headline {
+  margin: 4px 0;
+  font-size: var(--font-heading-md-size);
+}
+
+.meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-secondary, GrayText);
+}
