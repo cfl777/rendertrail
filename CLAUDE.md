@@ -26,7 +26,10 @@ An open-source MCP App. It records how React components render in headless Chrom
 - Install: `npm install`
 - Build: `npm run build` (type-checks, then builds the card to `dist/card.html`, the server to `dist/server.js` and the page instrumentation to `dist/instrument.js`)
 - Type-check only: `npm run typecheck` (server, page instrumentation in `src/recorder/page/`, card)
-- Unit tests: `npm test` (Vitest, no browser)
+- Unit tests: `npm test` (Vitest, no browser) — includes the card component tests (jsdom) in `ui/src/*.test.tsx`
+- Card harness: `npm run dev:card` (http://127.0.0.1:5177/) renders the card in every state from saved real results in `ui/dev/results/`, with a state, theme and width picker; no host needed
+- Regenerate the harness results from the saved traces: `npm run card:results` (`test/card-results.test.ts` fails when they are stale)
+- Card screenshots for review: `npm run card:screenshots` (every state, light and dark, 400 and 720 px, into `.github/screenshots/phase-3/`; also fails on horizontal overflow at 320 px)
 - Golden tests: `npm run test:golden` (builds first, then records `fixtures/` in a real browser: the installed Chrome, else Playwright's Chromium from `npx playwright-core install chromium`). Counts come from `fixtures/*/expected.json`, a machine-readable copy of `EXPECTED.md`; keep the two in step. To check React 18: `npm install --no-save react@18.3.1 react-dom@18.3.1`, run it, then `npm install` to go back. Also covered: network isolation of the recorded page, and a stdio smoke test of `dist/server.js`. CI runs both React versions.
 - Regenerate the analyzer's unit-test traces (`test/fixtures/traces/`) from the real recorder: `RT_SAVE_TRACES=1 npm run test:golden`
 - Runs are stored in `~/.rendertrail/runs` (the last 50). `RENDERTRAIL_RUNS_DIR` overrides the folder and must be an absolute path; both test configs point it at a temp folder.
