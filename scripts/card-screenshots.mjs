@@ -1,8 +1,9 @@
 // Screenshots of every card state from the harness, light and dark, at 400 and 720 px wide:
 // `npm run card:screenshots` → .github/screenshots/phase-3/<state>-<theme>-<width>.png
+// Only those files are replaced; the live host shots in phase-3/live/ are kept.
 // Uses the installed Chrome (playwright-core, channel "chrome"), else Playwright's Chromium.
 // Animations are finished before each shot (Playwright "animations: disabled"), so the tree rows show.
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -13,7 +14,7 @@ const outDir = path.join(root, '.github', 'screenshots', 'phase-3');
 const resultsDir = path.join(root, 'ui', 'dev', 'results');
 
 const results = (await readdir(resultsDir)).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
-const states = ['waiting', 'receiving', ...results.sort()];
+const states = ['waiting', 'receiving', 'failed', 'cancelled', ...results.sort()];
 /** Extra shots with panels open: the state, a suffix, and the buttons to press. */
 const opened = [
   { state: 'unfixed', suffix: 'open', press: ['Why does it happen?', 'Show me the line', 'How do I fix it?'] },
@@ -36,8 +37,11 @@ try {
   browser = await chromium.launch();
 }
 
-await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
+// Remove the old harness shots (files right in phase-3/), never the live/ folder.
+for (const entry of await readdir(outDir, { withFileTypes: true })) {
+  if (entry.isFile() && /-(light|dark)-d+.png$/.test(entry.name)) await unlink(path.join(outDir, entry.name));
+}
 const failures = [];
 try {
   const shots = [

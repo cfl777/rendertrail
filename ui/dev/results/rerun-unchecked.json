@@ -158,7 +158,7 @@
     "keystroke": {
       "unit": "step",
       "label": "The interaction (0 steps with input)",
-      "caption": "played 1 action in SearchPage",
+      "caption": "typed “hello” into SearchPage",
       "steps": 0,
       "msPerStep": 0,
       "rendersPerStep": 0,
@@ -177,6 +177,7 @@
       "changedFiles": [
         "SearchPage.tsx"
       ],
+      "baselineTopFindingId": "unstable-prop:ResultsList:filters",
       "baselineFiles": [
         {
           "path": "SearchPage.tsx",

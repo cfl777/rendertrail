@@ -10,7 +10,7 @@ import { createRoot } from 'react-dom/client';
 
 import { Card } from '../src/Card';
 import { copyText } from '../src/clipboard';
-import { parseToolInput, type CardState, type HostActions } from '../src/model';
+import { applyCancelled, applyToolResult, EMPTY_STATE, openedTracker, parseToolInput, type CardState, type HostActions } from '../src/model';
 import '../src/card.css';
 import './harness.css';
 import { HOST_STYLE_VARIABLES } from './host-styles';
@@ -26,6 +26,8 @@ const ORDER = ['unfixed', 'no-findings', 'unstable', 'rerun-fixed', 'rerun-all-f
 const STATES: { id: string; title: string; note?: string }[] = [
   { id: 'waiting', title: 'Waiting: nothing received yet' },
   { id: 'receiving', title: 'Receiving: files arrived, recording' },
+  { id: 'failed', title: 'Host error result (isError, no structuredContent)' },
+  { id: 'cancelled', title: 'Cancelled by the host' },
   ...[...ORDER.filter((id) => RESULTS[id]), ...Object.keys(RESULTS).filter((id) => !ORDER.includes(id))].map((id) => ({
     id,
     title: RESULTS[id]!.title,
@@ -34,10 +36,15 @@ const STATES: { id: string; title: string; note?: string }[] = [
 ];
 
 function stateFor(id: string): CardState {
-  if (id === 'waiting') return { input: null, recording: false, output: null };
-  if (id === 'receiving') return { input: parseToolInput(RESULTS.unfixed?.input), recording: true, output: null };
+  const receiving: CardState = { ...EMPTY_STATE, input: parseToolInput(RESULTS.unfixed?.input), recording: true };
+  if (id === 'waiting') return EMPTY_STATE;
+  if (id === 'receiving') return receiving;
+  if (id === 'failed') {
+    return applyToolResult(receiving, { isError: true, content: [{ type: 'text', text: 'MCP error -32001: Request timed out' }] });
+  }
+  if (id === 'cancelled') return applyCancelled(receiving, 'The user stopped the tool call.');
   const r = RESULTS[id];
-  return { input: r ? parseToolInput(r.input) : null, recording: true, output: r?.output ?? null };
+  return { ...EMPTY_STATE, input: r ? parseToolInput(r.input) : null, recording: true, output: r?.output ?? null };
 }
 
 type Theme = 'light' | 'dark';
@@ -77,7 +84,7 @@ function Harness() {
         setLog((l) => [...l, `copyText (${ok ? 'copied' : 'failed'}):\n${text}`]);
         return ok;
       },
-      noteOpened: (text) => setLog((l) => [...l, `updateModelContext: ${text}`]),
+      noteOpened: openedTracker((text) => setLog((l) => [...l, `updateModelContext: ${text}`])),
     }),
     [],
   );

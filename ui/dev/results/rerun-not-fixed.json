@@ -774,6 +774,7 @@
       "found": true,
       "sameInteraction": true,
       "changedFiles": [],
+      "baselineTopFindingId": "unstable-prop:ResultsList:filters",
       "baselineFiles": [],
       "checked": true,
       "message": "Compared with run r_8f2k1a: each letter now takes 20.4 ms (it took 20.4 ms).",

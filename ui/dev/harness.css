@@ -52,7 +52,8 @@ body {
   width: auto;
   max-width: none;
   border: none;
-  padding: 8px 16px 12px;
+  /* No padding of its own: the card sits in the frame exactly as in a host. */
+  padding: 0;
 }
 
 .log {
