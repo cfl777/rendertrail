@@ -1,0 +1,54 @@
+{
+  "$comment": "Machine-readable copy of EXPECTED.md (the source of truth). Render and commit counts are asserted exactly. Of the trigger column, only mount and input are asserted exactly (they come from counted input events); follow-up and later come from a timing heuristic, so the test only checks they aren't input. Timings are only checked against the loose inputMedianMsRange of each variant.",
+  "test": "test.json",
+  "fixedEntry": "Cart.fixed.tsx",
+  "variants": {
+    "Cart.tsx": {
+      "commitCount": 15,
+      "commits": [
+        { "index": 0, "trigger": "mount", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 1, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 2, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 3, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 4, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 5, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 6, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 7, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 8, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 9, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 10, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 11, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 12, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 13, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 14, "trigger": "follow-up", "renders": { "CartSummary": 1 } }
+      ],
+      "rendersAfterMount": {
+        "Cart": 4,
+        "CartLine": 12,
+        "CartSummary": 14
+      },
+      "inputMedianMsRange": [0.1, 20]
+    },
+    "Cart.fixed.tsx": {
+      "commitCount": 10,
+      "commits": [
+        { "index": 0, "trigger": "mount", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 1, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 2, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 3, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 4, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 5, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 6, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 7, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 8, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 9, "trigger": "follow-up", "renders": { "CartSummary": 1 } }
+      ],
+      "rendersAfterMount": {
+        "Cart": 4,
+        "CartLine": 12,
+        "CartSummary": 9
+      },
+      "inputMedianMsRange": [0.1, 20]
+    }
+  }
+}

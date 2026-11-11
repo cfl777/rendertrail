@@ -1,0 +1,14 @@
+{
+  "entry": "Cart.tsx",
+  "exportName": "default",
+  "steps": [
+    { "action": "click", "target": "button[aria-label=\"Add one Yoga mat\"]" },
+    { "action": "wait", "ms": 150 },
+    { "action": "click", "target": "button[aria-label=\"Add one Yoga mat\"]" },
+    { "action": "wait", "ms": 150 },
+    { "action": "click", "target": "button[aria-label=\"Remove one Foam roller\"]" },
+    { "action": "wait", "ms": 150 },
+    { "action": "click", "target": "button[aria-label=\"Add one Resistance band\"]" },
+    { "action": "wait", "ms": 150 }
+  ]
+}

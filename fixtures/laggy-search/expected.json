@@ -1,6 +1,7 @@
 {
-  "$comment": "Machine-readable copy of EXPECTED.md (the source of truth). Render and commit counts are asserted exactly. Of the trigger column, only mount and input are asserted exactly (they come from counted input events); follow-up and later come from a timing heuristic, so the test only checks they aren't input. Timings are not asserted here.",
+  "$comment": "Machine-readable copy of EXPECTED.md (the source of truth). Render and commit counts are asserted exactly. Of the trigger column, only mount and input are asserted exactly (they come from counted input events); follow-up and later come from a timing heuristic, so the test only checks they aren't input. Timings are only checked against the loose inputMedianMsRange of each variant.",
   "test": "test.json",
+  "fixedEntry": "SearchPage.fixed.tsx",
   "variants": {
     "SearchPage.tsx": {
       "commitCount": 12,
@@ -26,7 +27,8 @@
         "ResultsList": 6,
         "ResultRow": 1050,
         "Sidebar": 0
-      }
+      },
+      "inputMedianMsRange": [10, 200]
     },
     "SearchPage.fixed.tsx": {
       "commitCount": 12,
@@ -52,7 +54,41 @@
         "ResultsList": 1,
         "ResultRow": 50,
         "Sidebar": 0
+      },
+      "inputMedianMsRange": [0, 3]
+    }
+  },
+  "findings": {
+    "$comment": "Machine-readable copy of EXPECTED.md's \"Findings the analyzer must report\" and \"Must NOT be reported\", checked by test/golden/analyzer.golden.test.ts. `report` lists every finding in rank order (exactly these, nothing else). A `mustNotReport` entry matches a finding when all its fields match: component, prop, setter, hookOwner, file, or commit (a commit index the finding includes). `comparison` records `baseline`, then `fixed` sent under the baseline's entry path with the first run's id as baselineRunId, and lists finding ids.",
+    "variants": {
+      "SearchPage.tsx": {
+        "report": [
+          { "rule": "unstable-prop", "component": "ResultsList", "prop": "filters", "location": "SearchPage.tsx:19", "fix": "useMemo", "compilerFixes": true, "stepsAffected": 5, "steps": 5 },
+          { "rule": "state-in-effect", "component": "SearchBox", "setter": "setCharCount", "location": "SearchBox.tsx:10", "fix": "compute-in-render", "compilerFixes": false, "stepsAffected": 5, "steps": 5 }
+        ],
+        "mustNotReport": [
+          { "component": "Header" }, { "component": "Layout" }, { "component": "Sidebar" },
+          { "hookOwner": "useDebounce" }, { "setter": "setDebounced" }, { "file": "hooks.ts" },
+          { "component": "ResultsList", "commit": 11 }
+        ]
+      },
+      "SearchPage.fixed.tsx": {
+        "report": [
+          { "rule": "state-in-effect", "component": "SearchBox", "setter": "setCharCount", "location": "SearchBox.tsx:10", "fix": "compute-in-render", "compilerFixes": false, "stepsAffected": 5, "steps": 5 }
+        ],
+        "mustNotReport": [
+          { "component": "Header" }, { "component": "Layout" }, { "component": "Sidebar" },
+          { "hookOwner": "useDebounce" }, { "setter": "setDebounced" }, { "file": "hooks.ts" },
+          { "component": "ResultsList" }
+        ]
       }
+    },
+    "comparison": {
+      "baseline": "SearchPage.tsx",
+      "fixed": "SearchPage.fixed.tsx",
+      "resolved": ["unstable-prop:ResultsList:filters"],
+      "stillThere": ["state-in-effect:SearchBox:setCharCount"],
+      "new": []
     }
   }
 }

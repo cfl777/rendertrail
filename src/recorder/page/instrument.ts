@@ -88,6 +88,7 @@ instrument({
       });
 
       const renderedSet = new Set(fibers.map(({ fiber }) => fiber));
+      const indexOf = new Map(fibers.map(({ fiber }, i) => [fiber, i]));
       let renderMs = 0;
       const rendered: RenderedComponent[] = fibers.map(({ fiber, phase }) => {
         const tags = getReactWorkTagsForFiber(fiber as unknown as Fiber);
@@ -103,6 +104,7 @@ instrument({
           phase,
           memo: wrapper !== null || fiber.tag === tags.MemoComponent || fiber.tag === tags.SimpleMemoComponent,
           parent: parentFiber ? nameOf(parentFiber) : null,
+          parentIndex: parentFiber ? (indexOf.get(parentFiber) ?? null) : null,
           selfMs: round(selfDuration(fiber)),
           totalMs: round(fiber.actualDuration ?? 0),
           changedProps: propsPrev ? diffProps(propsPrev.memoizedProps, propsNext.memoizedProps) : [],

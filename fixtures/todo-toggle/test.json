@@ -1,0 +1,12 @@
+{
+  "entry": "TodoApp.tsx",
+  "exportName": "default",
+  "steps": [
+    { "action": "type", "target": "input[aria-label=\"New todo\"]", "text": "milk", "delayMs": 100 },
+    { "action": "wait", "ms": 200 },
+    { "action": "click", "target": "input[aria-label=\"Toggle Task 3\"]" },
+    { "action": "wait", "ms": 200 },
+    { "action": "click", "target": "button[type=\"submit\"]" },
+    { "action": "wait", "ms": 200 }
+  ]
+}

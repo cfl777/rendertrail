@@ -4,12 +4,12 @@ import { createRoot } from 'react-dom/client';
 import { BRAND } from '../../src/brand';
 import { SCHEMA_VERSION, type InspectRenderOutput } from '../../src/shared/types';
 
-// Phase 1 placeholder: shows what was recorded. The real card (HANDOFF.md §8) is Phase 3.
+// Placeholder: shows the headline and subline of the analysis. The real card (HANDOFF.md §8) is Phase 3.
 
 function isOutput(value: unknown): value is InspectRenderOutput {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return v.schemaVersion === SCHEMA_VERSION && (typeof v.run === 'object' || typeof v.error === 'object');
+  return v.schemaVersion === SCHEMA_VERSION && (typeof v.keystroke === 'object' || typeof v.error === 'object');
 }
 
 function Card() {
@@ -47,19 +47,14 @@ function Card() {
     );
   }
 
-  const { run } = output;
+  const { keystroke, comparison } = output;
   return (
     <main className="card">
       <p className="caption">
-        {BRAND.displayName} · {run.entry}
+        {BRAND.displayName} · {keystroke.caption}
       </p>
-      <h1 className="headline">
-        Recorded {run.commitCount} updates in {run.runs} runs
-      </h1>
-      <p className="meta">
-        Each input update takes {run.timings.inputMedianMs.toFixed(1)} ms
-        {run.stable ? '' : ' · counts differed between runs'}
-      </p>
+      <h1 className="headline">{comparison?.found ? comparison.message : keystroke.headline}</h1>
+      <p className="meta">{keystroke.subline}</p>
     </main>
   );
 }
