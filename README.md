@@ -12,8 +12,6 @@ npm test               # unit tests
 npm run test:golden    # builds, then golden tests: records fixtures/ in your installed Chrome
 node dist/server.js    # the MCP server over stdio
 npm run start:http     # the MCP server over HTTP, for the ext-apps basic-host
-cd spike && npm install && RT_CHANNEL=chrome npm run record   # the recorder spike (Git Bash)
-cd spike; npm install; $env:RT_CHANNEL='chrome'; npm run record   # the same in PowerShell
 ```
 
 The recorder uses your installed Google Chrome. Without Chrome, install Playwright's Chromium
