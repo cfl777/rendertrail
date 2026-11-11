@@ -1,0 +1,43 @@
+{
+  "$comment": "Machine-readable copy of EXPECTED.md (the source of truth). Render and commit counts are asserted exactly. Of the trigger column, only mount and input are asserted exactly (they come from counted input events); follow-up and later come from a timing heuristic, so the test only checks they aren't input. Timings are only checked against the loose inputMedianMsRange of each variant.",
+  "test": "test.json",
+  "fixedEntry": "TodoApp.fixed.tsx",
+  "variants": {
+    "TodoApp.tsx": {
+      "commitCount": 7,
+      "commits": [
+        { "index": 0, "trigger": "mount", "renders": { "TodoApp": 1, "TodoItem": 100, "TodoFooter": 1 } },
+        { "index": 1, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 100 } },
+        { "index": 2, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 100 } },
+        { "index": 3, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 100 } },
+        { "index": 4, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 100 } },
+        { "index": 5, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 100, "TodoFooter": 1 } },
+        { "index": 6, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 101, "TodoFooter": 1 } }
+      ],
+      "rendersAfterMount": {
+        "TodoApp": 6,
+        "TodoItem": 601,
+        "TodoFooter": 2
+      },
+      "inputMedianMsRange": [3, 200]
+    },
+    "TodoApp.fixed.tsx": {
+      "commitCount": 7,
+      "commits": [
+        { "index": 0, "trigger": "mount", "renders": { "TodoApp": 1, "TodoItem": 100, "TodoFooter": 1 } },
+        { "index": 1, "trigger": "input", "renders": { "TodoApp": 1 } },
+        { "index": 2, "trigger": "input", "renders": { "TodoApp": 1 } },
+        { "index": 3, "trigger": "input", "renders": { "TodoApp": 1 } },
+        { "index": 4, "trigger": "input", "renders": { "TodoApp": 1 } },
+        { "index": 5, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 1, "TodoFooter": 1 } },
+        { "index": 6, "trigger": "input", "renders": { "TodoApp": 1, "TodoItem": 1, "TodoFooter": 1 } }
+      ],
+      "rendersAfterMount": {
+        "TodoApp": 6,
+        "TodoItem": 2,
+        "TodoFooter": 2
+      },
+      "inputMedianMsRange": [0, 3]
+    }
+  }
+}
