@@ -64,6 +64,17 @@ describe.skipIf(!built)('stdio smoke test (needs `npm run build`; skipped when d
         'Renders after mount: SearchPage 6, Layout 6, Header 6, SearchBox 11, ResultsList 6, ResultRow 1050, Sidebar 0.',
       );
       expect(call.result?.structuredContent?.schemaVersion).toBe(1);
+
+      // The card resource: one self-contained HTML file, well under 1 MB.
+      const read = (await rpc('resources/read', { uri: 'ui://rendertrail/card.html' })) as {
+        result?: { contents?: { mimeType?: string; text?: string; _meta?: { ui?: { prefersBorder?: boolean } } }[] };
+      };
+      const card = read.result?.contents?.[0];
+      expect(card?.mimeType).toBe('text/html;profile=mcp-app');
+      expect(card?._meta?.ui?.prefersBorder).toBe(false);
+      expect(card?.text).toContain('<div id="root"></div>');
+      expect(card?.text).not.toMatch(/<script[^>]+src=/);
+      expect(Buffer.byteLength(card?.text ?? '', 'utf8')).toBeLessThan(1024 * 1024);
     } finally {
       child.kill();
     }
