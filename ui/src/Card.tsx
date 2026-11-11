@@ -1,34 +1,36 @@
 /**
  * The card (HANDOFF.md §8), driven only by structuredContent and the tool arguments. States:
  * waiting (nothing yet), receiving (the arguments arrived, recording), answer, comparison (a
- * re-run with a baseline) and couldn't record.
+ * re-run with a baseline) and couldn't record (an error result, a cancel, or our error shape).
  */
 import { useState } from 'react';
 import { BRAND } from '../../src/brand';
 import type { Finding } from '../../src/shared/types';
 import {
+  budgetSentence,
   comparisonHeadline,
   errorHeadline,
   findingTitle,
   fixMessage,
   isError,
   locationText,
-  msText,
   prSummary,
   RETRY_MESSAGE,
   stepWords,
   type CardState,
   type ErrorOutput,
   type HostActions,
+  type Problem,
   type ResultOutput,
 } from './model';
 import { BeforeAfter, Caption, CodeChanges, CodeText, Disclosure, FindingChips, Notes, Skeleton, TimeBar, Tree } from './parts';
 
 export function Card({ state, host }: { state: CardState; host: HostActions }) {
   const { output } = state;
-  if (!output) return <Waiting state={state} />;
-  if (isError(output)) return <CouldNotRecord output={output} host={host} />;
-  return <Result output={output} state={state} host={host} />;
+  if (output && isError(output)) return <CouldNotRecord output={output} host={host} />;
+  if (output) return <Result output={output} state={state} host={host} />;
+  if (state.problem) return <Stopped problem={state.problem} host={host} />;
+  return <Waiting state={state} />;
 }
 
 function Waiting({ state }: { state: CardState }) {
@@ -49,6 +51,19 @@ function Waiting({ state }: { state: CardState }) {
         </ul>
       )}
       <Skeleton />
+    </main>
+  );
+}
+
+/** The tool call ended without a result the card can draw: the host's error or a cancel. */
+function Stopped({ problem, host }: { problem: Problem; host: HostActions }) {
+  const cancelled = problem.kind === 'cancelled';
+  return (
+    <main className="card" data-state={cancelled ? 'cancelled' : 'failed'}>
+      <Caption>{BRAND.displayName} · couldn't record</Caption>
+      <h1 className="headline">{cancelled ? 'Recording was cancelled.' : "Couldn't record the component."}</h1>
+      {problem.text && (cancelled ? <p className="subline">{problem.text}</p> : <pre className="details">{problem.text}</pre>)}
+      {!cancelled && <Actions primary={{ label: 'Fix the input and try again', message: RETRY_MESSAGE }} host={host} />}
     </main>
   );
 }
@@ -99,10 +114,15 @@ function Result({ output, state, host }: { output: ResultOutput; state: CardStat
   return <Answer output={output} host={host} note={c && !c.found ? c.message : null} />;
 }
 
+/** "Opened" items for Claude's context: the chip and the finding it was about. */
+function opener(host: HostActions, f: Finding): (what: string) => void {
+  return (what) => host.noteOpened(`“${what}” for ${findingTitle(f)}`);
+}
+
 function Answer({ output, host, note }: { output: ResultOutput; host: HostActions; note: string | null }) {
   const k = output.keystroke;
   const [top, ...more] = output.findings;
-  const opened = (f: Finding) => (what: string) => host.noteOpened(`The user opened “${what}” in the ${BRAND.displayName} card for: ${f.texts.summary}`);
+  const { noun } = stepWords(k);
   return (
     <main className="card" data-state={top ? 'answer' : 'no-findings'}>
       <Caption>
@@ -114,12 +134,12 @@ function Answer({ output, host, note }: { output: ResultOutput; host: HostAction
       {k.steps > 0 && <TimeBar k={k} />}
       {!top && k.steps > 0 && (
         <p className="raw" data-testid="raw-cost">
-          {stepWords(k).per[0]!.toUpperCase() + stepWords(k).per.slice(1)}: {msText(k.msPerStep)}, {Math.round(k.rendersPerStep * 10) / 10} component renders (median of{' '}
-          {k.steps} {k.steps === 1 ? stepWords(k).noun : `${stepWords(k).noun}s`}). Nothing else stands out.
+          {Math.round(k.rendersPerStep * 10) / 10} component renders {stepWords(k).per} (median of {k.steps} {k.steps === 1 ? noun : `${noun}s`}). Nothing else
+          stands out.
         </p>
       )}
-      <Tree k={k} />
-      {top && <FindingChips finding={top} onOpen={opened(top)} idPrefix="top" />}
+      <Tree k={k} top={top} />
+      {top && <FindingChips finding={top} onOpen={opener(host, top)} idPrefix="top" />}
       {more.length > 0 && (
         <section className="more" aria-label="Also found">
           <h2>Also found</h2>
@@ -128,8 +148,13 @@ function Answer({ output, host, note }: { output: ResultOutput; host: HostAction
               key={f.id}
               id={`more-${i}`}
               className="disclosure more-item"
-              label={`${findingTitle(f)}${locationText(f) ? ` · ${locationText(f)}` : ''}`}
-              onOpen={() => opened(f)('Also found')}
+              label={
+                <span className="more-label">
+                  <span>{findingTitle(f)}</span>
+                  {locationText(f) && <span className="more-where"> · {locationText(f)}</span>}
+                </span>
+              }
+              onOpen={() => opener(host, f)('Also found')}
             >
               <p>
                 <CodeText text={f.texts.why} />
@@ -163,6 +188,8 @@ function Compared({ output, state, host }: { output: ResultOutput; state: CardSt
     const f = output.findings.find((x) => x.id === id);
     return f ? locationText(f) : null;
   };
+  // The first problem that's left, for why / line / fix.
+  const left = output.findings.find((f) => c.stillThere.some((r) => r.id === f.id) || c.new.some((r) => r.id === f.id));
 
   return (
     <main className="card" data-state={c.checked ? 'comparison' : 'unchecked'}>
@@ -170,7 +197,8 @@ function Compared({ output, state, host }: { output: ResultOutput; state: CardSt
         {BRAND.displayName} · {k.caption}
       </Caption>
       <h1 className="headline">{comparisonHeadline(c, output)}</h1>
-      <p className="subline">{c.checked ? k.subline : c.message}</p>
+      {/* The headline already gives the time; keep only the screen-refresh sentence. */}
+      <p className="subline">{c.checked ? budgetSentence(k.subline) : c.message}</p>
       {c.checked && c.before && c.after && (
         <BeforeAfter before={c.before.msPerStep} after={c.after.msPerStep} beforeRenders={c.before.rendersPerStep} afterRenders={c.after.rendersPerStep} k={k} />
       )}
@@ -189,20 +217,19 @@ function Compared({ output, state, host }: { output: ResultOutput; state: CardSt
           )}
         </ul>
       )}
+      {c.checked && left && <FindingChips finding={left} onOpen={opener(host, left)} idPrefix="left" />}
       {c.checked && groups.length === 0 && <p className="muted">No problems were found in either run.</p>}
       {c.changedFiles.length > 0 && (
-        <Disclosure id="changes" label="What changed in my code?" onOpen={() => host.noteOpened(`The user opened “What changed in my code?” in the ${BRAND.displayName} card.`)}>
+        <Disclosure id="changes" label="What changed in my code?" onOpen={() => host.noteOpened('“What changed in my code?”')}>
           <CodeChanges changedFiles={c.changedFiles} baselineFiles={c.baselineFiles} currentFiles={current} />
         </Disclosure>
       )}
-      {c.changedFiles.length === 0 && <p className="muted">No files changed since run {c.baselineRunId}.</p>}
+      {c.changedFiles.length === 0 && <p className="muted">No files changed since the last run.</p>}
       <Notes items={notes} />
-      {c.checked && (
-        <Actions
-          primary={remaining > 0 ? { label: 'Fix it and check', message: fixMessage(k) } : null}
-          copy={prSummary(output)}
-          host={host}
-        />
+      {c.checked ? (
+        <Actions primary={remaining > 0 ? { label: 'Fix it and check', message: fixMessage(k) } : null} copy={prSummary(output)} host={host} />
+      ) : (
+        <Actions primary={{ label: 'Fix the input and try again', message: RETRY_MESSAGE }} host={host} />
       )}
     </main>
   );
@@ -210,12 +237,21 @@ function Compared({ output, state, host }: { output: ResultOutput; state: CardSt
 
 type Status = { kind: 'idle' } | { kind: 'done'; text: string } | { kind: 'failed'; text: string };
 
-/** At most 2 actions: "Fix it and check" (or "try again") and "Copy for PR". */
+/**
+ * At most 2 actions: "Fix it and check" (or "try again") and "Copy for PR". The message button
+ * turns off once the message is in the chat, so it can't be sent twice from this card.
+ */
 function Actions(props: { primary: { label: string; message: string } | null; copy?: string; host: HostActions }) {
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const [showCopy, setShowCopy] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
   const send = async (message: string): Promise<void> => {
+    if (sending || sent) return;
+    setSending(true);
     const ok = await props.host.sendMessage(message).catch(() => false);
+    setSending(false);
+    setSent(ok);
     setStatus(ok ? { kind: 'done', text: 'Added to the message box. Send it when you’re ready.' } : { kind: 'failed', text: `Couldn't reach the chat. Type this instead: “${message}”` });
   };
   const copy = async (text: string): Promise<void> => {
@@ -227,7 +263,7 @@ function Actions(props: { primary: { label: string; message: string } | null; co
     <div className="actions-wrap">
       <div className="actions">
         {props.primary && (
-          <button type="button" className="button primary" onClick={() => void send(props.primary!.message)}>
+          <button type="button" className="button primary" disabled={sending || sent} onClick={() => void send(props.primary!.message)}>
             {props.primary.label}
           </button>
         )}

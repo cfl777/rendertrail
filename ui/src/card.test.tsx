@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TREE_LABEL_TEXT } from '../../src/shared/types';
 import type { CardResult } from '../dev/result-types';
 import { Card } from './Card';
-import { parseOutput, parseToolInput, type CardState, type HostActions, type ResultOutput } from './model';
+import { EMPTY_STATE, applyCancelled, applyToolResult, parseOutput, parseToolInput, type CardState, type HostActions, type ResultOutput } from './model';
 
 function result(name: string): CardResult {
   return JSON.parse(readFileSync(path.join(process.cwd(), 'ui', 'dev', 'results', `${name}.json`), 'utf8')) as CardResult;
@@ -18,7 +18,7 @@ function result(name: string): CardResult {
 
 function stateOf(name: string): CardState {
   const r = result(name);
-  return { input: parseToolInput(r.input), recording: true, output: parseOutput(r.output) };
+  return { ...EMPTY_STATE, input: parseToolInput(r.input), recording: true, output: parseOutput(r.output) };
 }
 
 function host(): HostActions & { sent: string[]; copied: string[]; noted: string[] } {
@@ -51,7 +51,7 @@ afterEach(cleanup);
 
 describe('waiting and receiving', () => {
   it('shows a skeleton before anything arrives', () => {
-    const { container } = render(<Card state={{ input: null, recording: false, output: null }} host={host()} />);
+    const { container } = render(<Card state={EMPTY_STATE} host={host()} />);
     expect(container.querySelector('[data-state="waiting"]')).not.toBeNull();
     expect(container.querySelector('.skeleton')).not.toBeNull();
     expect(screen.getByText(/waiting for the code/)).toBeTruthy();
@@ -59,7 +59,7 @@ describe('waiting and receiving', () => {
 
   it('shows the files and the component being recorded once the arguments arrive', () => {
     const input = parseToolInput(result('unfixed').input);
-    render(<Card state={{ input, recording: true, output: null }} host={host()} />);
+    render(<Card state={{ ...EMPTY_STATE, input, recording: true }} host={host()} />);
     expect(screen.getByText('Rendertrail · recording SearchPage…')).toBeTruthy();
     const files = within(screen.getByRole('list', { name: 'Files sent' })).getAllByRole('listitem').map((li) => li.textContent);
     expect(files).toEqual(['data.ts', 'hooks.ts', 'ResultRow.tsx', 'ResultsList.tsx', 'SearchBox.tsx', 'SearchPage.tsx', 'ui.tsx']);
@@ -166,7 +166,7 @@ describe('answer (laggy search, unfixed)', () => {
   it('lists the second finding under "Also found"', async () => {
     render(<Card state={stateOf('unfixed')} host={host()} />);
     const more = screen.getByRole('region', { name: 'Also found' });
-    const toggle = within(more).getByRole('button', { name: /SearchBox sets state inside an effect · SearchBox\.tsx:10/ });
+    const toggle = within(more).getByRole('button', { name: /SearchBox sets state inside an effect\s*·\s*SearchBox\.tsx:10/ });
     await userEvent.click(toggle);
     expect(more.textContent).toContain('const charCount = value.length;');
   });
@@ -200,9 +200,11 @@ describe('no findings', () => {
     expect(container.querySelector('[data-state="no-findings"]')).not.toBeNull();
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(out.keystroke.headline);
     expect(out.keystroke.headline).toMatch(/^Nothing to fix: each letter takes/);
+    // The time is in the headline and subline already; this line adds the render count only.
     expect(screen.getByTestId('raw-cost').textContent).toBe(
-      `Per keystroke: ${out.keystroke.msPerStep} ms, ${out.keystroke.rendersPerStep} component renders (median of 5 keystrokes). Nothing else stands out.`,
+      `${out.keystroke.rendersPerStep} component renders per keystroke (median of 5 keystrokes). Nothing else stands out.`,
     );
+    expect(screen.getByTestId('raw-cost').textContent).not.toContain(' ms');
     const bar = screen.getByRole('img', { name: /^Time per keystroke:/ });
     expect(bar.dataset.wastedPct).toBe('0');
     expect(within(bar).queryByText(/^Wasted/)).toBeNull();
@@ -311,19 +313,24 @@ describe('comparison (re-run with a baseline)', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/^Not fixed yet\. Each keystroke takes [\d.]+ ms \(it took [\d.]+ ms\)\.$/);
     expect(screen.getAllByRole('listitem').filter((li) => li.dataset.status === 'still')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: 'What changed in my code?' })).toBeNull();
-    expect(screen.getByText('No files changed since run r_8f2k1a.')).toBeTruthy();
+    expect(screen.getByText('No files changed since the last run.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('r_8f2k1a');
   });
 
-  it("couldn't check (checked: false): says why, no bars, no actions, but the file toggle", () => {
+  it("couldn't check (checked: false): says why, no bars, a retry action and the file toggle", async () => {
+    const h = host();
     const out = resultOutput('rerun-unchecked');
-    const { container } = render(<Card state={stateOf('rerun-unchecked')} host={host()} />);
+    const { container } = render(<Card state={stateOf('rerun-unchecked')} host={h} />);
     expect(container.querySelector('[data-state="unchecked"]')).not.toBeNull();
+    expect(screen.getByText('Rendertrail · typed “hello” into SearchPage')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe("Couldn't check the fix.");
     expect(screen.getByText(out.comparison!.message)).toBeTruthy();
     expect(screen.queryByRole('img')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Copy for PR' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Fix it and check' })).toBeNull();
     expect(screen.getByRole('button', { name: 'What changed in my code?' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Fix the input and try again' }));
+    expect(h.sent).toEqual(['Fix the input and record it again.']);
   });
 
   it('a missing baseline shows the answer with a note', () => {
@@ -360,6 +367,95 @@ describe("couldn't record", () => {
     expect(parseOutput({ schemaVersion: 2, error: { message: 'x' } })).toBeNull();
     expect(parseOutput('text')).toBeNull();
     expect(parseOutput(result('error').output)).not.toBeNull();
+  });
+});
+
+describe('review fixes', () => {
+  it('an error result from the host shows "couldn\'t record" with its text, not a skeleton forever', async () => {
+    const h = host();
+    const s = applyToolResult({ ...EMPTY_STATE, recording: true }, { isError: true, content: [{ type: 'text', text: 'Request timed out' }] });
+    const { container } = render(<Card state={s} host={h} />);
+    expect(container.querySelector('[aria-busy]')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe("Couldn't record the component.");
+    expect(screen.getByText('Request timed out')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Fix the input and try again' }));
+    expect(h.sent).toEqual(['Fix the input and record it again.']);
+  });
+
+  it('a cancel says the recording was cancelled', () => {
+    render(<Card state={applyCancelled({ ...EMPTY_STATE, recording: true })} host={host()} />);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Recording was cancelled.');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('the top finding\'s tree row shows the same wasted time as the bar; other rows show none', () => {
+    const k = resultOutput('unfixed').keystroke;
+    render(<Card state={stateOf('unfixed')} host={host()} />);
+    const rows = within(screen.getByRole('region', { name: 'What one keystroke does' })).getAllByRole('listitem');
+    const ms = rows.map((r) => r.querySelector('.row-ms')?.textContent ?? null);
+    expect(ms).toEqual([null, null, null, `${k.wastedMsPerStep} ms`, null]);
+    expect(within(screen.getByRole('img', { name: /^Time per keystroke:/ })).getByText(`Wasted ${k.wastedMsPerStep} ms`)).toBeTruthy();
+  });
+
+  it('a re-run gives the time once: the subline keeps only the screen-refresh sentence', () => {
+    const k = resultOutput('rerun-fixed').keystroke;
+    render(<Card state={stateOf('rerun-fixed')} host={host()} />);
+    const subline = document.querySelector('.subline')!.textContent!;
+    expect(subline).toMatch(/^Typing feels smooth when an update fits in one screen refresh/);
+    expect(k.subline.startsWith('Each keystroke takes')).toBe(true);
+  });
+
+  it('a re-run with problems left shows why / line / fix for the first one left', async () => {
+    render(<Card state={stateOf('rerun-not-fixed')} host={host()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Show me the line' }));
+    expect(screen.getByRole('region', { name: 'Show me the line' }).textContent).toContain('SearchPage.tsx, line 19');
+  });
+
+  it('closed toggles point at no panel; open ones point at their panel', async () => {
+    render(<Card state={stateOf('unfixed')} host={host()} />);
+    const why = screen.getByRole('button', { name: 'Why does it happen?' });
+    expect(why.getAttribute('aria-controls')).toBeNull();
+    await userEvent.click(why);
+    expect(document.getElementById(why.getAttribute('aria-controls')!)).not.toBeNull();
+    const more = within(screen.getByRole('region', { name: 'Also found' })).getByRole('button');
+    expect(more.getAttribute('aria-controls')).toBeNull();
+  });
+
+  it('"Fix it and check" can only be sent once from a card', async () => {
+    const h = host();
+    render(<Card state={stateOf('unfixed')} host={h} />);
+    const button = screen.getByRole('button', { name: 'Fix it and check' });
+    await userEvent.click(button);
+    await userEvent.click(button);
+    expect(h.sent).toHaveLength(1);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('a file that changed only in whitespace says so, with no empty diff box', async () => {
+    const s = stateOf('rerun-fixed');
+    const out = s.output as ResultOutput;
+    const current = s.input!.files.map((f) => (f.path === 'SearchPage.tsx' ? { ...f, content: out.comparison!.baselineFiles[0]!.content.replace(/\n/g, '\r\n') + '\n\n' } : f));
+    render(<Card state={{ ...s, input: { ...s.input!, files: current } }} host={host()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'What changed in my code?' }));
+    expect(screen.getByText('· only line endings or whitespace changed')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('marks hidden lines above the first change, and says "more changes" only when some are cut', async () => {
+    render(<Card state={stateOf('rerun-fixed')} host={host()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'What changed in my code?' }));
+    expect(document.querySelector('.more-changes')).toBeNull();
+
+    const s = stateOf('rerun-fixed');
+    const out = s.output as ResultOutput;
+    const old = out.comparison!.baselineFiles[0]!.content;
+    const many = old + Array.from({ length: 60 }, (_, i) => `// line ${i}`).join('\n') + '\n';
+    const current = s.input!.files.map((f) => (f.path === 'SearchPage.tsx' ? { ...f, content: many } : f));
+    cleanup();
+    render(<Card state={{ ...s, input: { ...s.input!, files: current } }} host={host()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'What changed in my code?' }));
+    expect(document.querySelector('.more-changes')).not.toBeNull();
+    expect(document.querySelector('.hunk-gap')).not.toBeNull();
   });
 });
 

@@ -1,8 +1,9 @@
 /** The card's building blocks (HANDOFF.md §8). Presentational: data in, no host calls. */
 import { useState, type ReactNode } from 'react';
-import { TREE_LABEL_TEXT, type Finding, type KeystrokeView, type TreeLabel } from '../../src/shared/types';
-import { countChanges, hunks, lineDiff } from './diff';
-import { barScale, codeParts, msText, stepWords, type SourceFile } from './model';
+import { TREE_LABEL_TEXT, type TreeLabel } from '../../src/shared/constants';
+import type { Finding, KeystrokeView } from '../../src/shared/types';
+import { countChanges, hunks, lineDiff, startsLate, whitespaceOnly } from './diff';
+import { barScale, codeParts, msText, stepWords, treeRowMs, type SourceFile } from './model';
 
 /** The analyzer's texts mark code with backticks. */
 export function CodeText({ text }: { text: string }) {
@@ -18,7 +19,7 @@ export function Caption({ children }: { children: ReactNode }) {
 }
 
 /** A toggle that opens its panel in place, right below it. */
-export function Disclosure(props: { id: string; label: string; onOpen?: () => void; children: ReactNode; className?: string }) {
+export function Disclosure(props: { id: string; label: ReactNode; onOpen?: () => void; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
   const panelId = `${props.id}-panel`;
   return (
@@ -27,7 +28,7 @@ export function Disclosure(props: { id: string; label: string; onOpen?: () => vo
         type="button"
         className="chip"
         aria-expanded={open}
-        aria-controls={panelId}
+        aria-controls={open ? panelId : undefined}
         onClick={() => {
           if (!open) props.onOpen?.();
           setOpen(!open);
@@ -144,7 +145,7 @@ const DOT: Record<TreeLabel, string> = {
 };
 
 /** "What one keystroke does": at most 5 rows. "Watch it again" replays the rows appearing. */
-export function Tree({ k }: { k: KeystrokeView }) {
+export function Tree({ k, top }: { k: KeystrokeView; top: Finding | undefined }) {
   const [replay, setReplay] = useState(0);
   if (k.tree.length === 0) return null;
   const { treeTitle } = stepWords(k);
@@ -172,7 +173,7 @@ export function Tree({ k }: { k: KeystrokeView }) {
                 {row.count > 1 && <span className="row-count"> × {row.count}</span>}
                 {below.length > 0 && <span className="row-below"> with {below.map(([name, n]) => `${n} × ${name}`).join(', ')}</span>}
               </span>
-              {row.ms >= 0.05 && <span className="row-ms">{msText(row.ms)}</span>}
+              {treeRowMs(row, k, top) !== null && <span className="row-ms">{msText(treeRowMs(row, k, top)!)}</span>}
               <span className="row-label">
                 <span className={`dot ${DOT[row.label]}`} aria-hidden="true" />
                 {TREE_LABEL_TEXT[row.label]}
@@ -243,7 +244,7 @@ export function FindingChips({ finding, onOpen, idPrefix }: { finding: Finding; 
             type="button"
             className="chip"
             aria-expanded={open[c.key]}
-            aria-controls={`${idPrefix}-${c.key}-panel`}
+            aria-controls={open[c.key] ? `${idPrefix}-${c.key}-panel` : undefined}
             onClick={() => {
               if (!open[c.key]) onOpen(c.label);
               setOpen({ ...open, [c.key]: !open[c.key] });
@@ -286,8 +287,10 @@ export function CodeChanges(props: { changedFiles: string[]; baselineFiles: Sour
         }
         const lines = lineDiff(before?.content ?? '', after?.content ?? '');
         const { added, removed } = countChanges(lines);
-        const status = !before ? 'new file' : !after ? 'removed' : `${added} added, ${removed} removed`;
+        const cosmetic = Boolean(before && after) && (added + removed === 0 || whitespaceOnly(before!.content, after!.content));
+        const status = !before ? 'new file' : !after ? 'removed' : cosmetic ? 'only line endings or whitespace changed' : `${added} added, ${removed} removed`;
         let shown = 0;
+        let hidden = 0;
         const groups = hunks(lines);
         return (
           <div key={path} className="file" data-file={path}>
@@ -295,15 +298,16 @@ export function CodeChanges(props: { changedFiles: string[]; baselineFiles: Sour
               <code>{path}</code>
               <span className="muted"> · {status}</span>
             </p>
-            {before && after && (
+            {before && after && !cosmetic && (
               <div className="diff" role="table" aria-label={`Changes in ${path}`}>
                 {groups.map((h, hi) => {
-                  if (shown >= MAX_DIFF_LINES) return null;
-                  const visible = h.lines.slice(0, MAX_DIFF_LINES - shown);
+                  const visible = h.lines.slice(0, Math.max(0, MAX_DIFF_LINES - shown));
                   shown += visible.length;
+                  hidden += h.lines.length - visible.length;
+                  if (visible.length === 0) return null;
                   return (
                     <div key={hi} className="hunk" role="rowgroup">
-                      {hi > 0 && <div className="hunk-gap" aria-hidden="true">⋯</div>}
+                      {(hi > 0 || startsLate(h)) && <div className="hunk-gap" aria-hidden="true">⋯</div>}
                       {visible.map((l, li) => (
                         <div key={li} className={`dl dl-${l.kind}`} role="row" data-kind={l.kind}>
                           <span className="dl-no" role="cell" aria-label={l.kind === 'del' ? 'removed' : l.kind === 'add' ? 'added' : 'unchanged'}>
@@ -317,7 +321,7 @@ export function CodeChanges(props: { changedFiles: string[]; baselineFiles: Sour
                     </div>
                   );
                 })}
-                {added + removed > 0 && shown >= MAX_DIFF_LINES && <p className="muted">More changes not shown.</p>}
+                {hidden > 0 && <p className="muted more-changes">More changes not shown.</p>}
               </div>
             )}
           </div>

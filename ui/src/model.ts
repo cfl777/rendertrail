@@ -4,14 +4,8 @@
  */
 import { BRAND } from '../../src/brand';
 import { msText, unitFor } from '../../src/analyzer/words';
-import {
-  SCHEMA_VERSION,
-  type Comparison,
-  type Finding,
-  type InspectRenderOutput,
-  type KeystrokeView,
-  type RecordErrorKind,
-} from '../../src/shared/types';
+import { SCHEMA_VERSION } from '../../src/shared/constants';
+import type { Comparison, Finding, InspectRenderOutput, KeystrokeView, RecordErrorKind } from '../../src/shared/types';
 
 export { msText };
 
@@ -32,21 +26,31 @@ export interface ToolInput {
   entry: string | null;
 }
 
-/** What the card shows: nothing yet, the arguments (receiving), or the result. */
+/** A tool call that ended without a result the card can draw: an error result or a cancel. */
+export interface Problem {
+  kind: 'failed' | 'cancelled';
+  /** The result's text, or the cancel reason; empty when there is none. */
+  text: string;
+}
+
+/** What the card shows: nothing yet, the arguments (receiving), the result, or a problem. */
 export interface CardState {
   input: ToolInput | null;
   /** True once the complete arguments arrived: the recording is running. */
   recording: boolean;
   output: Output | null;
+  problem: Problem | null;
 }
+
+export const EMPTY_STATE: CardState = { input: null, recording: false, output: null, problem: null };
 
 /** What the card can ask the host to do. */
 export interface HostActions {
   /** Put a message in the chat (Claude: the message box). False when the host refused. */
   sendMessage(text: string): Promise<boolean>;
   copyText(text: string): Promise<boolean>;
-  /** Tell Claude what the user opened, without sending a message. */
-  noteOpened(text: string): void;
+  /** Tell Claude what the user opened, without sending a message (one short item, e.g. "Why does it happen?"). */
+  noteOpened(item: string): void;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -75,6 +79,42 @@ export function parseToolInput(args: unknown): ToolInput | null {
   const entry = typeof args.entry === 'string' ? args.entry : null;
   if (paths.length === 0 && entry === null) return null;
   return { files, paths, entry };
+}
+
+function resultText(content: unknown): string {
+  if (!Array.isArray(content)) return '';
+  return content
+    .flatMap((c) => (isObject(c) && c.type === 'text' && typeof c.text === 'string' ? [c.text] : []))
+    .join('\n')
+    .trim();
+}
+
+/**
+ * A tool result: our structuredContent when it is there; otherwise (an error result, or a result
+ * without structuredContent) a problem with the result's text, so the card never waits forever.
+ */
+export function applyToolResult(s: CardState, result: { isError?: boolean; structuredContent?: unknown; content?: unknown }): CardState {
+  const output = result.isError ? null : parseOutput(result.structuredContent);
+  if (output) return { ...s, output, problem: null };
+  return { ...s, output: null, problem: { kind: 'failed', text: resultText(result.content) } };
+}
+
+export function applyCancelled(s: CardState, reason?: string): CardState {
+  if (s.output) return s;
+  return { ...s, problem: { kind: 'cancelled', text: reason ?? '' } };
+}
+
+/**
+ * updateModelContext replaces what it sent before, so every call sends everything the user has
+ * opened so far. Returns the function the card calls with each item.
+ */
+export function openedTracker(send: (text: string) => void): (item: string) => void {
+  const opened: string[] = [];
+  return (item) => {
+    if (opened.includes(item)) return;
+    opened.push(item);
+    send(`In the ${BRAND.displayName} card, the user opened: ${opened.join('; ')}.`);
+  };
 }
 
 export function isError(output: Output): output is ErrorOutput {
@@ -125,19 +165,54 @@ export function locationText(f: Finding): string | null {
   return f.location ? `${f.location.file}:${f.location.line}` : null;
 }
 
-/** Changes smaller than the timer resolution (about 0.1 ms) are noise. */
-const NOISE_MS = 0.1;
+/** Milliseconds in whole tenths, the precision the card shows (and about the timer's resolution). */
+function tenths(ms: number): number {
+  return Math.round(ms * 10);
+}
+
+export type ComparisonVerdict = 'fixed' | 'partly' | 'faster' | 'not-fixed' | 'unchecked';
+
+/**
+ * - fixed: the baseline's top finding is resolved, nothing is new, and a step fits a screen refresh.
+ * - partly: something was resolved, but not all of that (a finding left, a new one, or still slow).
+ * - faster: nothing was resolved, but a step got clearly faster (at least 10 % and 0.5 ms).
+ * - not-fixed: anything else.
+ * Times are compared in tenths of a millisecond, as shown, so float noise can't tip the verdict.
+ */
+export function comparisonVerdict(c: Comparison, frameBudgetMs: number): ComparisonVerdict {
+  if (!c.checked || !c.before || !c.after) return 'unchecked';
+  const before = tenths(c.before.msPerStep);
+  const after = tenths(c.after.msPerStep);
+  const topResolved = c.baselineTopFindingId !== undefined && c.resolved.some((r) => r.id === c.baselineTopFindingId);
+  if (topResolved && c.new.length === 0 && after <= tenths(frameBudgetMs)) return 'fixed';
+  if (c.resolved.length > 0) return 'partly';
+  if (before - after >= Math.max(before / 10, 5)) return 'faster';
+  return 'not-fixed';
+}
 
 export function comparisonHeadline(c: Comparison, output: ResultOutput): string {
   const k = output.keystroke;
-  if (!c.checked || !c.before || !c.after) return "Couldn't check the fix.";
+  const verdict = comparisonVerdict(c, k.frameBudgetMs);
+  if (verdict === 'unchecked' || !c.before || !c.after) return "Couldn't check the fix.";
   const each = unitFor(output.run.summary.steps, k.steps).each;
-  const before = c.before.msPerStep;
-  const after = c.after.msPerStep;
-  const faster = before - after >= NOISE_MS;
-  if (faster && c.resolved.length > 0 && c.new.length === 0) return `Fixed. ${each} now takes ${msText(after)}.`;
-  if (faster) return `Faster. ${each} now takes ${msText(after)}, down from ${msText(before)}.`;
-  return `Not fixed yet. ${each} takes ${msText(after)} (it took ${msText(before)}).`;
+  const after = msText(c.after.msPerStep);
+  const before = msText(c.before.msPerStep);
+  switch (verdict) {
+    case 'fixed':
+      return `Fixed. ${each} now takes ${after}.`;
+    case 'partly':
+      return `Partly fixed. ${each} now takes ${after} (it took ${before}).`;
+    case 'faster':
+      return `Faster. ${each} now takes ${after}, down from ${before}.`;
+    case 'not-fixed':
+      return `Not fixed yet. ${each} takes ${after} (it took ${before}).`;
+  }
+}
+
+/** The subline without its first sentence ("Each keystroke takes X ms."), when the headline already gives the time. */
+export function budgetSentence(subline: string): string {
+  const rest = subline.replace(/^.*? ms\. /, '');
+  return rest === subline ? subline : rest;
 }
 
 function rounded(n: number): string {
@@ -179,6 +254,16 @@ export function barScale(values: readonly number[], budgetMs: number): BarScale 
   const max = Math.max(budgetMs, ...values) * 1.15;
   const pct = (ms: number): number => Math.round((Math.max(0, ms) / max) * 1000) / 10;
   return { pct, budgetPct: pct(budgetMs) };
+}
+
+/**
+ * The ms shown on a tree row. Only rows that re-rendered for nothing behind memo get one, and the
+ * top finding's row shows the wasted time from the time bar, so the card's numbers agree.
+ */
+export function treeRowMs(row: KeystrokeView['tree'][number], k: KeystrokeView, top: Finding | undefined): number | null {
+  if (row.label !== 'memo-broken') return null;
+  if (top?.rule === 'unstable-prop' && top.component === row.name && k.wastedMsPerStep > 0) return k.wastedMsPerStep;
+  return row.ms >= 0.05 ? row.ms : null;
 }
 
 /** `text with `code` spans` → parts, for rendering the analyzer's texts. */

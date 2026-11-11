@@ -123,3 +123,21 @@ export function countChanges(lines: readonly DiffLine[]): { added: number; remov
     removed: lines.filter((l) => l.kind === 'del').length,
   };
 }
+
+/** True when the two texts differ only in whitespace: line endings, trailing spaces, blank lines at the end. */
+export function whitespaceOnly(before: string, after: string): boolean {
+  const norm = (text: string): string =>
+    text
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .join('\n')
+      .replace(/\n+$/, '');
+  return norm(before) === norm(after);
+}
+
+/** True when the hunk starts after line 1 of both files, so lines above it are hidden. */
+export function startsLate(h: Hunk): boolean {
+  const first = h.lines[0];
+  return first !== undefined && (first.oldLine ?? first.newLine ?? 1) > 1;
+}

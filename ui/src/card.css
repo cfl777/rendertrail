@@ -5,6 +5,8 @@
  * our own is the "origin" accent, defined for light and dark.
  *
  * State → host token: wasted → warning, needed → info, fixed → success, skipped → tertiary text.
+ * The status colors (warning, info, success, danger) fall back to fixed light/dark values: CSS has
+ * no system color for them.
  */
 :root {
   color-scheme: light dark;
@@ -30,10 +32,10 @@
   --rt-border: var(--color-border-primary, GrayText);
   --rt-surface: var(--color-background-secondary, Canvas);
   --rt-track: var(--color-background-tertiary, ButtonFace);
-  --rt-warning: var(--color-text-warning, Mark);
-  --rt-info: var(--color-text-info, LinkText);
-  --rt-success: var(--color-text-success, AccentColor);
-  --rt-danger: var(--color-text-danger, VisitedText);
+  --rt-warning: var(--color-text-warning, light-dark(#a16207, #fbbf24));
+  --rt-info: var(--color-text-info, light-dark(#1d4ed8, #60a5fa));
+  --rt-success: var(--color-text-success, light-dark(#15803d, #4ade80));
+  --rt-danger: var(--color-text-danger, light-dark(#b91c1c, #f87171));
   --rt-ring: var(--color-ring-primary, Highlight);
   /* Our own accent: where the state changed (the update's origin). */
   --rt-origin: light-dark(#6d28d9, #c4b5fd);
@@ -66,13 +68,17 @@ code,
 pre {
   font-family: var(--font-mono);
   font-size: 0.92em;
+  /* `=>` must stay `=>`, not an arrow glyph. */
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'calt' 0;
 }
 
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--rt-gap);
-  padding: 8px 0 4px;
+  /* A little room at the sides so borders and focus rings aren't cut off by the host's frame. */
+  padding: 8px 4px 4px;
   min-width: 0;
 }
 
@@ -461,6 +467,11 @@ pre {
   color: var(--color-text-inverse, ButtonFace);
 }
 
+.button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .button.secondary {
   border: var(--border-width-regular) solid var(--rt-border);
   background: transparent;
@@ -512,6 +523,16 @@ button:focus-visible {
 .notes {
   font-size: var(--font-text-sm-size);
   color: var(--rt-text-2);
+}
+
+.more-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 0.25em;
+}
+
+.more-where {
+  white-space: nowrap;
 }
 
 .more {
@@ -578,10 +599,10 @@ button:focus-visible {
 }
 
 .dl-del {
-  background: var(--color-background-danger, Mark);
+  background: var(--color-background-danger, color-mix(in srgb, var(--rt-danger) 14%, transparent));
 }
 .dl-add {
-  background: var(--color-background-success, Mark);
+  background: var(--color-background-success, color-mix(in srgb, var(--rt-success) 14%, transparent));
 }
 .dl-del .dl-no {
   color: var(--rt-danger);

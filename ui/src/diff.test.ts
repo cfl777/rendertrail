@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { countChanges, hunks, lineDiff } from './diff';
+import { countChanges, hunks, lineDiff, startsLate, whitespaceOnly } from './diff';
+
+describe('whitespaceOnly and startsLate', () => {
+  it('sees CRLF, trailing spaces and trailing blank lines as whitespace only', () => {
+    expect(whitespaceOnly('a\r\nb\r\n', 'a\nb')).toBe(true);
+    expect(whitespaceOnly('a  \nb', 'a\nb\n\n')).toBe(true);
+    expect(whitespaceOnly('a\nb', 'a\nc')).toBe(false);
+  });
+
+  it('knows when a hunk starts below line 1', () => {
+    const before = Array.from({ length: 10 }, (_, i) => `l${i}`).join('\n');
+    expect(startsLate(hunks(lineDiff(before, before.replace('l8', 'L8')))[0]!)).toBe(true);
+    expect(startsLate(hunks(lineDiff(before, before.replace('l0', 'L0')))[0]!)).toBe(false);
+  });
+});
 
 const kinds = (before: string, after: string): string[] => lineDiff(before, after).map((l) => `${l.kind[0]} ${l.text}`);
 

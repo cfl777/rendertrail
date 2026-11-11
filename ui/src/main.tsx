@@ -1,11 +1,10 @@
 import { useApp, useHostStyles, type App } from '@modelcontextprotocol/ext-apps/react';
 import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import pkg from '../../package.json';
 import { BRAND } from '../../src/brand';
 import { Card } from './Card';
 import { copyText } from './clipboard';
-import { parseOutput, parseToolInput, type CardState, type HostActions } from './model';
+import { applyCancelled, applyToolResult, EMPTY_STATE, openedTracker, parseToolInput, type CardState, type HostActions } from './model';
 
 function hostActions(app: App | null): HostActions {
   return {
@@ -15,17 +14,18 @@ function hostActions(app: App | null): HostActions {
       return !result.isError;
     },
     copyText,
-    noteOpened: (text) => {
-      // Optional (HANDOFF.md §8): lets Claude know what the user looked at.
+    // Optional (HANDOFF.md §8): lets Claude know what the user looked at. Each call replaces the
+    // last, so the tracker always sends everything opened so far.
+    noteOpened: openedTracker((text) => {
       app?.updateModelContext({ content: [{ type: 'text', text }] }).catch(() => undefined);
-    },
+    }),
   };
 }
 
 function Root() {
-  const [state, setState] = useState<CardState>({ input: null, recording: false, output: null });
+  const [state, setState] = useState<CardState>(EMPTY_STATE);
   const { app, error } = useApp({
-    appInfo: { name: BRAND.displayName, version: pkg.version },
+    appInfo: { name: BRAND.displayName, version: __CARD_VERSION__ },
     capabilities: {},
     // useApp reports the card's height to the host (autoResize), so the host iframe grows with it.
     onAppCreated: (created) => {
@@ -38,10 +38,8 @@ function Root() {
         const input = parseToolInput(params.arguments);
         setState((s) => ({ ...s, input: input ?? s.input, recording: true }));
       });
-      created.addEventListener('toolresult', (params) => {
-        const output = parseOutput(params.structuredContent);
-        if (output) setState((s) => ({ ...s, output }));
-      });
+      created.addEventListener('toolresult', (params) => setState((s) => applyToolResult(s, params)));
+      created.addEventListener('toolcancelled', (params) => setState((s) => applyCancelled(s, params.reason)));
     },
   });
   useHostStyles(app, app?.getHostContext());
@@ -51,6 +49,7 @@ function Root() {
   return <Card state={state} host={host} />;
 }
 
+document.title = BRAND.displayName;
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Root />
