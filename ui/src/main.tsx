@@ -1,66 +1,58 @@
-import { useApp, useHostStyles } from '@modelcontextprotocol/ext-apps/react';
-import { StrictMode, useState } from 'react';
+import { useApp, useHostStyles, type App } from '@modelcontextprotocol/ext-apps/react';
+import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import pkg from '../../package.json';
 import { BRAND } from '../../src/brand';
-import { SCHEMA_VERSION, type InspectRenderOutput } from '../../src/shared/types';
+import { Card } from './Card';
+import { copyText } from './clipboard';
+import { parseOutput, parseToolInput, type CardState, type HostActions } from './model';
 
-// Placeholder: shows the headline and subline of the analysis. The real card (HANDOFF.md §8) is Phase 3.
-
-function isOutput(value: unknown): value is InspectRenderOutput {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return v.schemaVersion === SCHEMA_VERSION && (typeof v.keystroke === 'object' || typeof v.error === 'object');
+function hostActions(app: App | null): HostActions {
+  return {
+    sendMessage: async (text) => {
+      if (!app) return false;
+      const result = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] });
+      return !result.isError;
+    },
+    copyText,
+    noteOpened: (text) => {
+      // Optional (HANDOFF.md §8): lets Claude know what the user looked at.
+      app?.updateModelContext({ content: [{ type: 'text', text }] }).catch(() => undefined);
+    },
+  };
 }
 
-function Card() {
-  const [output, setOutput] = useState<InspectRenderOutput | null>(null);
+function Root() {
+  const [state, setState] = useState<CardState>({ input: null, recording: false, output: null });
   const { app, error } = useApp({
-    appInfo: { name: BRAND.displayName, version: '0.0.0' },
+    appInfo: { name: BRAND.displayName, version: pkg.version },
     capabilities: {},
+    // useApp reports the card's height to the host (autoResize), so the host iframe grows with it.
     onAppCreated: (created) => {
-      // Handlers must be registered before connect(), which useApp calls next.
-      created.ontoolresult = (params) => {
-        if (isOutput(params.structuredContent)) setOutput(params.structuredContent);
-      };
+      // Listeners must be in place before connect(), which useApp calls next.
+      created.addEventListener('toolinputpartial', (params) => {
+        const input = parseToolInput(params.arguments);
+        if (input) setState((s) => (s.output ? s : { ...s, input }));
+      });
+      created.addEventListener('toolinput', (params) => {
+        const input = parseToolInput(params.arguments);
+        setState((s) => ({ ...s, input: input ?? s.input, recording: true }));
+      });
+      created.addEventListener('toolresult', (params) => {
+        const output = parseOutput(params.structuredContent);
+        if (output) setState((s) => ({ ...s, output }));
+      });
     },
   });
   useHostStyles(app, app?.getHostContext());
+  const host = useMemo(() => hostActions(app), [app]);
 
-  if (error) return <p className="meta">Couldn't connect to the host: {error.message}</p>;
-
-  if (!output) {
-    return (
-      <main className="card">
-        <p className="caption">{BRAND.displayName}</p>
-        <h1 className="headline">Recording…</h1>
-      </main>
-    );
-  }
-
-  if ('error' in output) {
-    return (
-      <main className="card">
-        <p className="caption">{BRAND.displayName}</p>
-        <h1 className="headline">Couldn't record: {output.error.message}</h1>
-        {output.error.stubs.length > 0 && <p className="meta">Stubbed imports: {output.error.stubs.join(', ')}</p>}
-      </main>
-    );
-  }
-
-  const { keystroke, comparison } = output;
-  return (
-    <main className="card">
-      <p className="caption">
-        {BRAND.displayName} · {keystroke.caption}
-      </p>
-      <h1 className="headline">{comparison?.found ? comparison.message : keystroke.headline}</h1>
-      <p className="meta">{keystroke.subline}</p>
-    </main>
-  );
+  if (error) return <p className="caption">Couldn't connect to the host: {error.message}</p>;
+  return <Card state={state} host={host} />;
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Card />
+    <Root />
   </StrictMode>,
 );

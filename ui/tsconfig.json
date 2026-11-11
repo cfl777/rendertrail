@@ -1,9 +1,22 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "vite/client",
+      "node"
+    ],
     "jsx": "react-jsx"
   },
-  "include": ["src", "../src/brand.ts", "../src/shared"]
+  "include": [
+    "src",
+    "dev",
+    "../src/brand.ts",
+    "../src/shared",
+    "../src/analyzer/words.ts"
+  ]
 }

@@ -9,7 +9,7 @@ export default defineConfig({
     // Runs stored by the tests (and by servers they spawn) go to a temp folder, never the real home.
     env: { [BRAND.runsDirEnv]: path.join(os.tmpdir(), `${BRAND.name}-test-runs`) },
     root: '.',
-    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'test/**/*.test.ts', 'ui/src/**/*.test.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/*.golden.test.ts'],
   },
 });
