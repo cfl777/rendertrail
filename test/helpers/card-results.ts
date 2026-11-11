@@ -201,6 +201,7 @@ export async function writeCardResults(): Promise<string[]> {
   return written;
 }
 
+/** The saved file, with CRLF turned back into LF (a Windows checkout with autocrlf adds them). */
 export async function readCardResult(name: string): Promise<string> {
-  return readFile(path.join(CARD_RESULTS_DIR, `${name}.json`), 'utf8');
+  return (await readFile(path.join(CARD_RESULTS_DIR, `${name}.json`), 'utf8')).replace(/\r\n/g, '\n');
 }
