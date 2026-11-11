@@ -1,0 +1,64 @@
+{
+  "title": "Couldn't record (component threw while mounting)",
+  "note": "Hand-made RecordError in the shape the recorder returns.",
+  "input": {
+    "files": [
+      {
+        "path": "data.ts",
+        "content": "export type Result = { id: number; title: string };\nexport type Filters = { sort: 'recent' | 'relevance'; tags: string[] };\n\nconst TOPICS = ['hello world in React', 'memo and props', 'effects and state', 'keys and lists'];\n\n// 200 results; 50 of them match \"hello\".\nexport const RESULTS: Result[] = Array.from({ length: 200 }, (_, i) => ({\n  id: i + 1,\n  title: `${TOPICS[i % TOPICS.length]} #${i + 1}`,\n}));\n"
+      },
+      {
+        "path": "hooks.ts",
+        "content": "import { useEffect, useMemo, useState } from 'react';\nimport { RESULTS, type Result } from './data';\n\nexport function useDebounce<T>(value: T, delayMs: number): T {\n  const [debounced, setDebounced] = useState(value);\n\n  useEffect(() => {\n    const id = setTimeout(() => setDebounced(value), delayMs);\n    return () => clearTimeout(id);\n  }, [value, delayMs]);\n\n  return debounced;\n}\n\nexport function useResults(query: string): Result[] {\n  return useMemo(() => {\n    const q = query.trim().toLowerCase();\n    return RESULTS.filter((result) => result.title.toLowerCase().includes(q));\n  }, [query]);\n}\n"
+      },
+      {
+        "path": "ResultRow.tsx",
+        "content": "import type { Result } from './data';\n\n// Deliberately slow (about 0.06 ms per row) so wasted renders cost real time.\nfunction busyWait(ms: number) {\n  const end = performance.now() + ms;\n  while (performance.now() < end) {\n    // do nothing\n  }\n}\n\nexport function ResultRow({ item }: { item: Result }) {\n  busyWait(0.06);\n  return <li>{item.title}</li>;\n}\n"
+      },
+      {
+        "path": "ResultsList.tsx",
+        "content": "import { memo } from 'react';\nimport { ResultRow } from './ResultRow';\nimport type { Filters, Result } from './data';\n\ntype ResultsListProps = {\n  items: Result[];\n  filters: Filters;\n};\n\nexport const ResultsList = memo(function ResultsList({ items, filters }: ResultsListProps) {\n  const visible = filters.sort === 'recent' ? [...items].reverse() : items;\n\n  return (\n    <ul aria-label={`Results tagged ${filters.tags.join(', ')}`}>\n      {visible.map((item) => (\n        <ResultRow key={item.id} item={item} />\n      ))}\n    </ul>\n  );\n});\n"
+      },
+      {
+        "path": "SearchBox.tsx",
+        "content": "import { useEffect, useState } from 'react';\n\ntype SearchBoxProps = {\n  value: string;\n  onChange: (value: string) => void;\n};\n\nexport function SearchBox({ value, onChange }: SearchBoxProps) {\n  const [charCount, setCharCount] = useState(0);\n  useEffect(() => setCharCount(value.length), [value]);\n\n  return (\n    <div>\n      <input\n        aria-label=\"Search\"\n        value={value}\n        onChange={(event) => onChange(event.target.value)}\n      />\n      <small>{charCount} characters</small>\n    </div>\n  );\n}\n"
+      },
+      {
+        "path": "SearchPage.tsx",
+        "content": "import { useState } from 'react';\nimport { useDebounce, useResults } from './hooks';\nimport { Header, Layout, Sidebar } from './ui';\nimport { SearchBox } from './SearchBox';\nimport { ResultsList } from './ResultsList';\n\nexport default function SearchPage() {\n  const [query, setQuery] = useState('');\n  const debounced = useDebounce(query, 300);\n  const results = useResults(debounced);\n  const [tags] = useState(['react']);\n\n  return (\n    <Layout>\n      <Header />\n      <SearchBox value={query} onChange={setQuery} />\n      <ResultsList\n        items={results}\n        filters={{ sort: 'recent', tags }}\n      />\n      <Sidebar tags={tags} />\n    </Layout>\n  );\n}\n"
+      },
+      {
+        "path": "ui.tsx",
+        "content": "import { memo, type ReactNode } from 'react';\n\nexport function Layout({ children }: { children: ReactNode }) {\n  return <main>{children}</main>;\n}\n\nexport function Header() {\n  return <h1>Search</h1>;\n}\n\nexport const Sidebar = memo(function Sidebar({ tags }: { tags: string[] }) {\n  return (\n    <aside>\n      {tags.map((tag) => (\n        <span key={tag}>#{tag}</span>\n      ))}\n    </aside>\n  );\n});\n"
+      }
+    ],
+    "entry": "SearchPage.tsx",
+    "exportName": "default",
+    "steps": [
+      {
+        "action": "type",
+        "target": "input[aria-label=\"Search\"]",
+        "text": "hello",
+        "delayMs": 100
+      },
+      {
+        "action": "wait",
+        "ms": 600
+      }
+    ]
+  },
+  "output": {
+    "schemaVersion": 1,
+    "error": {
+      "kind": "mount",
+      "message": "The component threw an error while mounting.",
+      "details": [
+        "TypeError: Cannot read properties of undefined (reading 'filter')\n    at ResultsList (ResultsList.tsx:12:24)"
+      ],
+      "stubs": [
+        "./api (imported by SearchPage.tsx)",
+        "@acme/ui/Spinner (imported by ResultsList.tsx)"
+      ]
+    }
+  }
+}

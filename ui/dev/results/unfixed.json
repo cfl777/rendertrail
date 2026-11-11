@@ -1,0 +1,772 @@
+{
+  "title": "Answer: laggy search, 2 findings",
+  "input": {
+    "files": [
+      {
+        "path": "data.ts",
+        "content": "export type Result = { id: number; title: string };\nexport type Filters = { sort: 'recent' | 'relevance'; tags: string[] };\n\nconst TOPICS = ['hello world in React', 'memo and props', 'effects and state', 'keys and lists'];\n\n// 200 results; 50 of them match \"hello\".\nexport const RESULTS: Result[] = Array.from({ length: 200 }, (_, i) => ({\n  id: i + 1,\n  title: `${TOPICS[i % TOPICS.length]} #${i + 1}`,\n}));\n"
+      },
+      {
+        "path": "hooks.ts",
+        "content": "import { useEffect, useMemo, useState } from 'react';\nimport { RESULTS, type Result } from './data';\n\nexport function useDebounce<T>(value: T, delayMs: number): T {\n  const [debounced, setDebounced] = useState(value);\n\n  useEffect(() => {\n    const id = setTimeout(() => setDebounced(value), delayMs);\n    return () => clearTimeout(id);\n  }, [value, delayMs]);\n\n  return debounced;\n}\n\nexport function useResults(query: string): Result[] {\n  return useMemo(() => {\n    const q = query.trim().toLowerCase();\n    return RESULTS.filter((result) => result.title.toLowerCase().includes(q));\n  }, [query]);\n}\n"
+      },
+      {
+        "path": "ResultRow.tsx",
+        "content": "import type { Result } from './data';\n\n// Deliberately slow (about 0.06 ms per row) so wasted renders cost real time.\nfunction busyWait(ms: number) {\n  const end = performance.now() + ms;\n  while (performance.now() < end) {\n    // do nothing\n  }\n}\n\nexport function ResultRow({ item }: { item: Result }) {\n  busyWait(0.06);\n  return <li>{item.title}</li>;\n}\n"
+      },
+      {
+        "path": "ResultsList.tsx",
+        "content": "import { memo } from 'react';\nimport { ResultRow } from './ResultRow';\nimport type { Filters, Result } from './data';\n\ntype ResultsListProps = {\n  items: Result[];\n  filters: Filters;\n};\n\nexport const ResultsList = memo(function ResultsList({ items, filters }: ResultsListProps) {\n  const visible = filters.sort === 'recent' ? [...items].reverse() : items;\n\n  return (\n    <ul aria-label={`Results tagged ${filters.tags.join(', ')}`}>\n      {visible.map((item) => (\n        <ResultRow key={item.id} item={item} />\n      ))}\n    </ul>\n  );\n});\n"
+      },
+      {
+        "path": "SearchBox.tsx",
+        "content": "import { useEffect, useState } from 'react';\n\ntype SearchBoxProps = {\n  value: string;\n  onChange: (value: string) => void;\n};\n\nexport function SearchBox({ value, onChange }: SearchBoxProps) {\n  const [charCount, setCharCount] = useState(0);\n  useEffect(() => setCharCount(value.length), [value]);\n\n  return (\n    <div>\n      <input\n        aria-label=\"Search\"\n        value={value}\n        onChange={(event) => onChange(event.target.value)}\n      />\n      <small>{charCount} characters</small>\n    </div>\n  );\n}\n"
+      },
+      {
+        "path": "SearchPage.tsx",
+        "content": "import { useState } from 'react';\nimport { useDebounce, useResults } from './hooks';\nimport { Header, Layout, Sidebar } from './ui';\nimport { SearchBox } from './SearchBox';\nimport { ResultsList } from './ResultsList';\n\nexport default function SearchPage() {\n  const [query, setQuery] = useState('');\n  const debounced = useDebounce(query, 300);\n  const results = useResults(debounced);\n  const [tags] = useState(['react']);\n\n  return (\n    <Layout>\n      <Header />\n      <SearchBox value={query} onChange={setQuery} />\n      <ResultsList\n        items={results}\n        filters={{ sort: 'recent', tags }}\n      />\n      <Sidebar tags={tags} />\n    </Layout>\n  );\n}\n"
+      },
+      {
+        "path": "ui.tsx",
+        "content": "import { memo, type ReactNode } from 'react';\n\nexport function Layout({ children }: { children: ReactNode }) {\n  return <main>{children}</main>;\n}\n\nexport function Header() {\n  return <h1>Search</h1>;\n}\n\nexport const Sidebar = memo(function Sidebar({ tags }: { tags: string[] }) {\n  return (\n    <aside>\n      {tags.map((tag) => (\n        <span key={tag}>#{tag}</span>\n      ))}\n    </aside>\n  );\n});\n"
+      }
+    ],
+    "entry": "SearchPage.tsx",
+    "exportName": "default",
+    "steps": [
+      {
+        "action": "type",
+        "target": "input[aria-label=\"Search\"]",
+        "text": "hello",
+        "delayMs": 100
+      },
+      {
+        "action": "wait",
+        "ms": 600
+      }
+    ]
+  },
+  "output": {
+    "schemaVersion": 1,
+    "run": {
+      "id": "r_8f2k1a",
+      "createdAt": "2026-11-11T09:00:00.000Z",
+      "summary": {
+        "entry": "SearchPage.tsx",
+        "exportName": "default",
+        "reactVersion": "19.3.1",
+        "browser": "Chrome 157.0.8103.38",
+        "steps": [
+          {
+            "action": "type",
+            "target": "input[aria-label=\"Search\"]",
+            "text": "hello",
+            "delayMs": 100
+          },
+          {
+            "action": "wait",
+            "ms": 600
+          }
+        ],
+        "runs": 3,
+        "stable": true,
+        "instability": [],
+        "commitCount": 12,
+        "truncated": false,
+        "commits": [
+          {
+            "index": 0,
+            "trigger": "mount",
+            "renderMs": 23.3,
+            "renderMsRuns": [
+              23.3,
+              23.4,
+              23
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "ResultRow",
+                "count": 200,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Sidebar",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 1,
+            "trigger": "input",
+            "renderMs": 20.7,
+            "renderMsRuns": [
+              20.7,
+              20.5,
+              21.3
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"\" → \"h\""
+                ]
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "value changed"
+                ]
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "filters changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "ResultRow",
+                "count": 200,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "trigger": "follow-up",
+            "renderMs": 0,
+            "renderMsRuns": [
+              0,
+              0,
+              0.1
+            ],
+            "rendered": [
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 0 → 1"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "trigger": "input",
+            "renderMs": 20.3,
+            "renderMsRuns": [
+              20.5,
+              20.2,
+              20.3
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"h\" → \"he\""
+                ]
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "value changed"
+                ]
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "filters changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "ResultRow",
+                "count": 200,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 4,
+            "trigger": "follow-up",
+            "renderMs": 0.1,
+            "renderMsRuns": [
+              0.1,
+              0.1,
+              0
+            ],
+            "rendered": [
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 1 → 2"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 5,
+            "trigger": "input",
+            "renderMs": 20.5,
+            "renderMsRuns": [
+              20.5,
+              20.4,
+              20.8
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"he\" → \"hel\""
+                ]
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "value changed"
+                ]
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "filters changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "ResultRow",
+                "count": 200,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 6,
+            "trigger": "follow-up",
+            "renderMs": 0,
+            "renderMsRuns": [
+              0,
+              0,
+              0.2
+            ],
+            "rendered": [
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 2 → 3"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 7,
+            "trigger": "input",
+            "renderMs": 20.4,
+            "renderMsRuns": [
+              20.3,
+              20.4,
+              20.4
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"hel\" → \"hell\""
+                ]
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "value changed"
+                ]
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "filters changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "ResultRow",
+                "count": 200,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 8,
+            "trigger": "follow-up",
+            "renderMs": 0,
+            "renderMsRuns": [
+              0,
+              0.1,
+              0
+            ],
+            "rendered": [
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 3 → 4"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 9,
+            "trigger": "input",
+            "renderMs": 20.4,
+            "renderMsRuns": [
+              20.1,
+              20.5,
+              20.4
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"hell\" → \"hello\""
+                ]
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "value changed"
+                ]
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "filters changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "ResultRow",
+                "count": 200,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 10,
+            "trigger": "follow-up",
+            "renderMs": 0,
+            "renderMsRuns": [
+              0,
+              0,
+              0.1
+            ],
+            "rendered": [
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 4 → 5"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 11,
+            "trigger": "later",
+            "renderMs": 5.4,
+            "renderMsRuns": [
+              5.3,
+              5.5,
+              5.4
+            ],
+            "rendered": [
+              {
+                "name": "SearchPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 \"\" → \"hello\""
+                ]
+              },
+              {
+                "name": "Layout",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "Header",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "SearchBox",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "ResultsList",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "items changed",
+                  "filters changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "ResultRow",
+                "count": 50,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          }
+        ],
+        "rendersAfterMount": {
+          "SearchPage": 6,
+          "Layout": 6,
+          "Header": 6,
+          "SearchBox": 11,
+          "ResultsList": 6,
+          "ResultRow": 1050,
+          "Sidebar": 0
+        },
+        "timings": {
+          "mountMs": 23.3,
+          "inputCommits": 5,
+          "inputMedianMs": 20.4,
+          "followUpCommits": 5,
+          "laterCommits": 1,
+          "frameBudgetMs": 16.7
+        },
+        "stubs": [],
+        "timerResolutionMs": 0.1,
+        "pageErrors": []
+      },
+      "steps": [
+        {
+          "index": 0,
+          "commits": [
+            1,
+            2
+          ],
+          "renderMs": 20.7,
+          "renders": 206
+        },
+        {
+          "index": 1,
+          "commits": [
+            3,
+            4
+          ],
+          "renderMs": 20.4,
+          "renders": 206
+        },
+        {
+          "index": 2,
+          "commits": [
+            5,
+            6
+          ],
+          "renderMs": 20.5,
+          "renders": 206
+        },
+        {
+          "index": 3,
+          "commits": [
+            7,
+            8
+          ],
+          "renderMs": 20.4,
+          "renders": 206
+        },
+        {
+          "index": 4,
+          "commits": [
+            9,
+            10
+          ],
+          "renderMs": 20.4,
+          "renders": 206
+        }
+      ]
+    },
+    "findings": [
+      {
+        "id": "unstable-prop:ResultsList:filters",
+        "rule": "unstable-prop",
+        "component": "ResultsList",
+        "prop": {
+          "name": "filters",
+          "type": "object"
+        },
+        "location": {
+          "file": "SearchPage.tsx",
+          "line": 19,
+          "snippet": "filters={{ sort: 'recent', tags }}"
+        },
+        "stepsAffected": 5,
+        "steps": 5,
+        "commits": [
+          1,
+          3,
+          5,
+          7,
+          9
+        ],
+        "msPerStep": 20.24,
+        "msPerAffectedStep": 20.2,
+        "rendersPerStep": 201,
+        "rendersPerAffectedStep": 201,
+        "below": {
+          "ResultRow": 200
+        },
+        "fix": {
+          "kind": "useMemo",
+          "compilerFixes": true
+        },
+        "texts": {
+          "summary": "ResultsList (memo) re-renders with 200 ResultRow below it on every letter: prop `filters` is a new object each render with the same value, created at SearchPage.tsx:19. Wasted: about 20.2 ms per letter. Fix: wrap it in useMemo (React Compiler would do this automatically).",
+          "why": "memo only skips a render when every prop is the same object as last time. `filters` looks the same, but it's a new object on every render, so ResultsList and everything below it re-renders for nothing.",
+          "line": "`filters={{ sort: 'recent', tags }}` at SearchPage.tsx:19.",
+          "fix": "Wrap it in useMemo so ResultsList gets the same object until its contents change: `const filters = useMemo(() => ({ sort: 'recent', tags }), [tags]);`, then pass `filters={filters}`. React Compiler would do this automatically."
+        },
+        "rank": 1
+      },
+      {
+        "id": "state-in-effect:SearchBox:setCharCount",
+        "rule": "state-in-effect",
+        "component": "SearchBox",
+        "hook": {
+          "index": 0,
+          "state": "charCount",
+          "setter": "setCharCount",
+          "owner": "SearchBox"
+        },
+        "location": {
+          "file": "SearchBox.tsx",
+          "line": 10,
+          "snippet": "setCharCount(value.length)"
+        },
+        "stepsAffected": 5,
+        "steps": 5,
+        "commits": [
+          2,
+          4,
+          6,
+          8,
+          10
+        ],
+        "msPerStep": 0.02,
+        "msPerAffectedStep": 0,
+        "rendersPerStep": 1,
+        "rendersPerAffectedStep": 1,
+        "extraUpdatesPerStep": 1,
+        "fix": {
+          "kind": "compute-in-render",
+          "compilerFixes": false
+        },
+        "texts": {
+          "summary": "SearchBox sets state inside useEffect (SearchBox.tsx:10): one extra update per letter (under 0.1 ms). Fix: compute charCount during render: `const charCount = value.length;`. React Compiler doesn't fix this one.",
+          "why": "SearchBox copies a value into state inside useEffect. React renders SearchBox, runs the effect, and then has to render it again with the new charCount: two updates where one would do.",
+          "line": "`setCharCount(value.length)` at SearchBox.tsx:10.",
+          "fix": "Compute `charCount` during render instead: `const charCount = value.length;`, and remove its useState and the useEffect. React Compiler doesn't fix this one."
+        },
+        "rank": 2
+      }
+    ],
+    "keystroke": {
+      "unit": "letter",
+      "label": "Typing \"hello\" (5 letters)",
+      "caption": "typed “hello” into SearchPage",
+      "steps": 5,
+      "msPerStep": 20.4,
+      "rendersPerStep": 206,
+      "frameBudgetMs": 16.7,
+      "overBudget": true,
+      "wastedMsPerStep": 20.2,
+      "restMsPerStep": 0.2,
+      "headline": "Every letter you type re-renders 201 components that didn't change: ResultsList and 200 × ResultRow.",
+      "subline": "Each keystroke takes 20.4 ms. Typing feels smooth when an update fits in one screen refresh (about 16.7 ms), so this feels laggy.",
+      "tree": [
+        {
+          "name": "SearchPage",
+          "depth": 0,
+          "label": "state-origin",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 20.1
+        },
+        {
+          "name": "Header",
+          "depth": 2,
+          "label": "nothing-changed",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 0
+        },
+        {
+          "name": "SearchBox",
+          "depth": 2,
+          "label": "needed",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 0
+        },
+        {
+          "name": "ResultsList",
+          "depth": 2,
+          "label": "memo-broken",
+          "memo": true,
+          "count": 1,
+          "below": {
+            "ResultRow": 200
+          },
+          "ms": 20.1
+        },
+        {
+          "name": "Sidebar",
+          "depth": 2,
+          "label": "skipped",
+          "memo": true,
+          "count": 1,
+          "below": {},
+          "ms": 0
+        }
+      ]
+    }
+  }
+}
