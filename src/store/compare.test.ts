@@ -25,6 +25,7 @@ describe('compareRuns', () => {
     expect(c.resolved.map((f) => f.id)).toEqual(['unstable-prop:ResultsList:filters']);
     expect(c.stillThere.map((f) => f.id)).toEqual(['state-in-effect:SearchBox:setCharCount']);
     expect(c.new).toEqual([]);
+    expect(c.baselineTopFindingId).toBe('unstable-prop:ResultsList:filters');
     expect(c.baselineFiles).toEqual([{ path: 'SearchPage.tsx', content: files.find((f) => f.path === 'SearchPage.tsx')!.content }]);
     expect(c.before!.msPerStep).toBeGreaterThan(10);
     expect(c.after!.msPerStep).toBeLessThan(3);

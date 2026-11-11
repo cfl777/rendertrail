@@ -14,11 +14,14 @@
     "build:card": "vite build",
     "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server.js",
     "build:instrument": "esbuild src/recorder/page/instrument.ts --bundle --platform=browser --format=iife --target=es2022 --minify-syntax --keep-names --outfile=dist/instrument.js",
-    "typecheck": "tsc -p tsconfig.json && tsc -p src/recorder/page/tsconfig.json && tsc -p ui/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/recorder/page/tsconfig.json && tsc -p ui/tsconfig.json && tsc -p ui/tsconfig.node.json",
     "test": "vitest run",
     "test:golden": "npm run build && vitest run --config vitest.golden.config.ts",
     "start": "node dist/server.js",
-    "start:http": "node dist/server.js --http"
+    "start:http": "node dist/server.js --http",
+    "card:results": "node scripts/card-results.mjs",
+    "dev:card": "vite --config ui/dev/vite.config.ts",
+    "card:screenshots": "node scripts/card-screenshots.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^2.0.4",
@@ -33,10 +36,14 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
     "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "jsdom": "30.1.3",
     "vite": "^8.3.6",
     "vite-plugin-singlefile": "^2.3.4",
     "vitest": "^5.1.0"

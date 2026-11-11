@@ -62,7 +62,8 @@ export function compareRuns(baselineRunId: string, baseline: RunForComparison, c
     sameJson(baseline.input.steps, current.input.steps);
   const changed = changedFiles(baseline.input.files, current.input.files);
   const baselineFiles = baseline.input.files.filter((f) => changed.includes(f.path)).map((f) => ({ path: f.path, content: f.content }));
-  const common = { baselineRunId, found: true, sameInteraction, changedFiles: changed, baselineFiles };
+  const top = baseline.findings.find((f) => f.rank === 1);
+  const common = { baselineRunId, found: true, sameInteraction, changedFiles: changed, ...(top ? { baselineTopFindingId: top.id } : {}), baselineFiles };
 
   // With no update after input in either run there's no cost per step to compare, and "no
   // findings" would only mean nothing was measured.

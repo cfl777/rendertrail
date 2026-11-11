@@ -50,25 +50,23 @@ function quote(text: string): string {
   return `“${text}”`;
 }
 
+/** What was done, in words for the card's caption, from the steps alone (also when no update followed). */
+function captionFor(acting: readonly Step[], component: string): string {
+  const typed = acting.flatMap((s) => (s.action === 'type' ? [s.text] : []));
+  if (acting.length > 0 && typed.length === acting.length) return `typed ${typed.map(quote).join(', ')} into ${component}`;
+  if (acting.length > 0 && acting.every((s) => s.action === 'click')) return `clicked ${acting.length} ${acting.length === 1 ? 'time' : 'times'} in ${component}`;
+  return `played ${acting.length} ${acting.length === 1 ? 'action' : 'actions'} in ${component}`;
+}
+
 /** "Typing "hello" (5 letters)" for the text, and "typed “hello” into SearchPage" for the card's caption. */
 export function interactionLabels(steps: readonly Step[], unit: UnitWords, stepCount: number, component: string): { label: string; caption: string } {
   const acting = steps.filter((s) => s.action !== 'wait');
   const typed = acting.flatMap((s) => (s.action === 'type' ? [s.text] : []));
+  const caption = captionFor(acting, component);
   if (unit.unit === 'letter') {
     const texts = typed.map((t) => JSON.stringify(t)).join(', ');
-    return {
-      label: `Typing ${texts} (${stepCount} ${stepCount === 1 ? unit.one : unit.many})`,
-      caption: `typed ${typed.map(quote).join(', ')} into ${component}`,
-    };
+    return { label: `Typing ${texts} (${stepCount} ${stepCount === 1 ? unit.one : unit.many})`, caption };
   }
-  if (unit.unit === 'click') {
-    return {
-      label: `Clicking ${stepCount} ${stepCount === 1 ? 'time' : 'times'}`,
-      caption: `clicked ${stepCount} ${stepCount === 1 ? 'time' : 'times'} in ${component}`,
-    };
-  }
-  return {
-    label: `The interaction (${stepCount} ${stepCount === 1 ? 'step' : 'steps'} with input)`,
-    caption: `played ${acting.length} ${acting.length === 1 ? 'action' : 'actions'} in ${component}`,
-  };
+  if (unit.unit === 'click') return { label: `Clicking ${stepCount} ${stepCount === 1 ? 'time' : 'times'}`, caption };
+  return { label: `The interaction (${stepCount} ${stepCount === 1 ? 'step' : 'steps'} with input)`, caption };
 }
