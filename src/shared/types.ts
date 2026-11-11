@@ -3,8 +3,10 @@
  * Bump SCHEMA_VERSION on any breaking change to these shapes.
  */
 import { z } from 'zod';
+import { SCHEMA_VERSION, type TreeLabel } from './constants.js';
 
-export const SCHEMA_VERSION = 1;
+// Zod-free, so the card can import them without zod (src/shared/constants.ts).
+export { SCHEMA_VERSION, TREE_LABEL_TEXT, type TreeLabel } from './constants.js';
 
 // ---------------------------------------------------------------------------
 // inspect_render input (HANDOFF.md §5)
@@ -256,17 +258,6 @@ export interface Finding {
   };
 }
 
-export type TreeLabel = 'state-origin' | 'needed' | 'memo-broken' | 'nothing-changed' | 'skipped';
-
-/** Card copy for the tree labels (HANDOFF.md §8). */
-export const TREE_LABEL_TEXT: Record<TreeLabel, string> = {
-  'state-origin': 'Your state changed here',
-  needed: 'Re-rendered · needed',
-  'memo-broken': "Re-rendered · memo couldn't skip it",
-  'nothing-changed': 'Re-rendered · nothing changed',
-  skipped: 'Skipped · memo worked',
-};
-
 export interface TreeRow {
   name: string;
   /** Depth in the component tree of the step's input update (0 = top). */
@@ -330,6 +321,8 @@ export interface Comparison {
   sameInteraction: boolean;
   /** Files added, removed or changed since the baseline (paths as sent). */
   changedFiles: string[];
+  /** The baseline's top finding (rank 1), if it had any: the card says "Fixed" only when this one is resolved. */
+  baselineTopFindingId?: string;
   /** The baseline's version of the changed files that existed then, for "What changed in my code?". */
   baselineFiles: { path: string; content: string }[];
 }

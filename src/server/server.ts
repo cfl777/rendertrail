@@ -45,6 +45,8 @@ export function createServer(): McpServer {
             ui: {
               prefersBorder: false,
               csp: { resourceDomains: ['https://assets.claude.ai'] },
+              // Lets "Copy for PR" use navigator.clipboard (Permission Policy clipboard-write).
+              permissions: { clipboardWrite: {} },
             },
           },
         },
