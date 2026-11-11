@@ -16,6 +16,10 @@ cd spike && npm install && RT_CHANNEL=chrome npm run record   # the recorder spi
 cd spike; npm install; $env:RT_CHANNEL='chrome'; npm run record   # the same in PowerShell
 ```
 
+Each run is stored in `~/.rendertrail/runs` (the last 50 are kept), so a later call can compare
+against it with `baselineRunId`. Set `RENDERTRAIL_RUNS_DIR` to an absolute path to store them elsewhere.
+`RT_SAVE_TRACES=1 npm run test:golden` rewrites the recorded traces the analyzer's unit tests use.
+
 The recorder uses your installed Google Chrome. Without Chrome, install Playwright's Chromium
 (about 150 MB) once with `npx playwright-core install chromium`.
 

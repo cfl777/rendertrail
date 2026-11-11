@@ -28,6 +28,8 @@ An open-source MCP App. It records how React components render in headless Chrom
 - Type-check only: `npm run typecheck` (server, page instrumentation in `src/recorder/page/`, card)
 - Unit tests: `npm test` (Vitest, no browser)
 - Golden tests: `npm run test:golden` (builds first, then records `fixtures/` in a real browser: the installed Chrome, else Playwright's Chromium from `npx playwright-core install chromium`). Counts come from `fixtures/*/expected.json`, a machine-readable copy of `EXPECTED.md`; keep the two in step. To check React 18: `npm install --no-save react@18.3.1 react-dom@18.3.1`, run it, then `npm install` to go back. Also covered: network isolation of the recorded page, and a stdio smoke test of `dist/server.js`. CI runs both React versions.
+- Regenerate the analyzer's unit-test traces (`test/fixtures/traces/`) from the real recorder: `RT_SAVE_TRACES=1 npm run test:golden`
+- Runs are stored in `~/.rendertrail/runs` (the last 50). `RENDERTRAIL_RUNS_DIR` overrides the folder and must be an absolute path; both test configs point it at a temp folder.
 - Run the server over stdio: `node dist/server.js` (`npm start`). This is what Claude Desktop and Claude Code launch.
 - Run the server over HTTP for the ext-apps basic-host: `npm run start:http` (`http://127.0.0.1:3001/mcp`, `PORT` overrides)
 - Run the spike: `cd spike && npm install && RT_CHANNEL=chrome npm run record` (Git Bash); in PowerShell: `cd spike; npm install; $env:RT_CHANNEL='chrome'; npm run record`

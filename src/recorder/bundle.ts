@@ -6,7 +6,10 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findAliased, findFile, normalizePath } from './paths.js';
 import { build, type BuildFailure, type BuildOptions, type Loader, type Message, type Plugin } from 'esbuild';
+
+export { findAliased, findFile, normalizePath };
 
 const require = createRequire(import.meta.url);
 
@@ -16,7 +19,6 @@ const EMPTY_NS = 'rt-empty';
 const ENTRY_ID = 'virtual:entry';
 const ENTRY_FILE = '__entry__.tsx';
 
-const EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.cjs', '.json'];
 const REACT_IMPORT = /^(react|react-dom)(\/.*)?$/;
 const STYLE_IMPORT = /\.(css|scss|sass|less|styl)(\?.*)?$/;
 
@@ -49,44 +51,6 @@ export interface BundleRequest {
 export type BundleResult =
   | { ok: true; code: string; stubs: string[] }
   | { ok: false; message: string; details: string[]; stubs: string[] };
-
-/** Paths as keys: forward slashes, no leading `./` or `/`. */
-export function normalizePath(p: string): string {
-  return path.posix
-    .normalize(p.replace(/\\/g, '/'))
-    .replace(/^(\.\/)+/, '')
-    .replace(/^\/+/, '');
-}
-
-/**
- * Finds a file the way a bundler would: exact, with an extension, or as a folder index. A `.js`,
- * `.jsx` or `.mjs` import also matches the `.ts`/`.tsx` source (TypeScript's ESM convention).
- */
-export function findFile(files: ReadonlyMap<string, string>, wanted: string): string | undefined {
-  const base = normalizePath(wanted);
-  const jsExt = /\.(js|jsx|mjs)$/.exec(base);
-  const withoutJs = jsExt ? base.slice(0, -jsExt[0].length) : null;
-  const candidates = [
-    base,
-    ...(withoutJs ? [`${withoutJs}.ts`, `${withoutJs}.tsx`] : []),
-    ...EXTENSIONS.map((ext) => base + ext),
-    ...EXTENSIONS.map((ext) => `${base}/index${ext}`),
-  ];
-  return candidates.find((candidate) => files.has(candidate));
-}
-
-/** `@/x` and `~/x` path aliases, tried as `x`, `src/x`, and `x` without a leading `src/`. */
-export function findAliased(files: ReadonlyMap<string, string>, spec: string): string | undefined {
-  const alias = /^[@~]\/(.+)$/.exec(spec);
-  if (!alias?.[1]) return undefined;
-  const rest = normalizePath(alias[1]);
-  const candidates = [rest, `src/${rest}`, rest.replace(/^src\//, '')];
-  for (const candidate of candidates) {
-    const found = findFile(files, candidate);
-    if (found) return found;
-  }
-  return undefined;
-}
 
 function loaderFor(file: string): Loader {
   const ext = path.posix.extname(file);

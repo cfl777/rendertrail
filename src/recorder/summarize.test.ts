@@ -8,6 +8,7 @@ function comp(name: string, extra: Partial<RenderedComponent> = {}): RenderedCom
     phase: 'update',
     memo: false,
     parent: null,
+    parentIndex: null,
     selfMs: 0,
     totalMs: 0,
     changedProps: [],
