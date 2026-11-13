@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordedCommit, RecordedTrace, RenderedComponent, TraceSummary } from '../shared/types.js';
 import { laggyFiles, savedTrace } from '../../test/helpers/laggy.js';
+import { summarize } from '../recorder/summarize.js';
 import { analyze } from './index.js';
 import { groupSteps } from './steps.js';
 import { formatAnalysis } from './text.js';
@@ -84,6 +85,25 @@ describe('laggy-search, from saved recorder traces', () => {
     expect(a.keystroke.overBudget).toBe(false);
     expect(a.keystroke.wastedMsPerStep).toBe(0);
     expect(a.keystroke.tree.filter((r) => r.label === 'skipped').map((r) => r.name)).toEqual(['ResultsList', 'Sidebar']);
+  });
+
+  it('unfixed: a run that recorded an extra update does not move time between findings', async () => {
+    // Seen on CI: a run recorded one more update than run 1, so from there on its input updates sat
+    // at run 1's follow-up indexes. Timings must only come from runs that line up with run 1.
+    const { summary: saved, traces } = savedTrace('SearchPage');
+    const first = traces[0]!;
+    const shifted = (): RecordedTrace => {
+      const extra = first.commits[2]!; // a second follow-up after the first letter
+      const commits = [...first.commits.slice(0, 3), extra, ...first.commits.slice(3)].map((c, index) => ({ ...c, index }));
+      return { ...first, commits };
+    };
+    const runs = [first, shifted(), shifted()];
+    const summary = summarize(runs, { ...saved, pageErrors: [] });
+    expect(summary.stable).toBe(false);
+    const a = await analyze({ summary, traces: runs, files });
+    expect(a.findings.map((f) => f.id)).toEqual(['unstable-prop:ResultsList:filters', 'state-in-effect:SearchBox:setCharCount']);
+    expect(a.findings[0]!.msPerStep).toBeGreaterThan(10);
+    expect(a.findings[1]!.msPerStep).toBeLessThan(1);
   });
 
   it('writes a text result that stands alone', async () => {

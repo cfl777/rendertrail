@@ -5,7 +5,7 @@
  * TypeScript compiler lazily on first use.
  */
 import type { Finding, InteractionStep, KeystrokeView, RecordedTrace, TraceSummary } from '../shared/types.js';
-import { median } from '../recorder/summarize.js';
+import { matchingRuns, median } from '../recorder/summarize.js';
 import { ANALYZER, RULE_ORDER } from './constants.js';
 import { isMemoBreak, stateInEffectCandidates, unstablePropCandidates, type Candidate, type Timing } from './rules.js';
 import { loadTypeScript, parseFiles, reachableFrom } from './source.js';
@@ -36,8 +36,9 @@ function exactMedian(values: readonly number[]): number {
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/** Timings from the summary (commit medians) and the traces (component medians, where the runs line up). */
-export function timingFrom(summary: TraceSummary, traces: readonly RecordedTrace[]): Timing {
+/** Timings from the summary (commit medians) and the traces (component medians over the runs that match run 1). */
+export function timingFrom(summary: TraceSummary, allTraces: readonly RecordedTrace[]): Timing {
+  const traces = matchingRuns(allTraces);
   const first = traces[0];
   return {
     commitMs: (commit) => summary.commits[commit]?.renderMs ?? first?.commits[commit]?.renderMs ?? 0,

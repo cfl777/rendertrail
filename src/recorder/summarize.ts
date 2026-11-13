@@ -70,6 +70,18 @@ export function compareRuns(traces: readonly RecordedTrace[]): string[] {
   return problems;
 }
 
+/**
+ * Run 1 and the runs that rendered the same as it, commit for commit. Timings are taken per commit
+ * index, so only these line up: in a run with one extra commit, every later index holds a
+ * different update (an input update where run 1 has its follow-up).
+ */
+export function matchingRuns(traces: readonly RecordedTrace[]): RecordedTrace[] {
+  const [first, ...rest] = traces;
+  if (!first) return [];
+  const want = first.commits.map(signature);
+  return [first, ...rest.filter((t) => t.commits.length === want.length && t.commits.every((c, i) => signature(c) === want[i]))];
+}
+
 export function rendersAfterMount(trace: RecordedTrace): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const commit of trace.commits) {
@@ -94,9 +106,10 @@ export function summarize(traces: readonly RecordedTrace[], meta: SummaryMeta): 
   const first = traces[0];
   if (!first) throw new Error('summarize needs at least one trace');
   const instability = compareRuns(traces);
+  const matching = matchingRuns(traces);
 
   const commits: CommitSummary[] = first.commits.map((commit) => {
-    const renderMsRuns = traces.flatMap((trace) => {
+    const renderMsRuns = matching.flatMap((trace) => {
       const same = trace.commits[commit.index];
       return same ? [same.renderMs] : [];
     });
