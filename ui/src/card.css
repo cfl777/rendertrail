@@ -77,13 +77,20 @@ pre {
   display: flex;
   flex-direction: column;
   gap: var(--rt-gap);
-  /* A little room at the sides so borders and focus rings aren't cut off by the host's frame. */
-  padding: 8px 4px 4px;
+  /* Room at the sides so the card doesn't run edge to edge (the host draws no border), and a
+   * width cap so lines and bars stay readable in a wide chat. */
+  padding: 12px 16px 8px;
+  max-width: 640px;
   min-width: 0;
 }
 
 .card > * {
   margin: 0;
+}
+
+/* Extra space between groups: the answer, the tree, the details, the actions. */
+.card > :is(.tree, .status-list, .more, .actions-wrap) {
+  margin-top: var(--rt-gap);
 }
 
 .caption {
@@ -446,7 +453,6 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 4px;
 }
 
 .actions {
