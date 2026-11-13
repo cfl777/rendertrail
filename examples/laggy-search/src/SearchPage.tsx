@@ -1,4 +1,4 @@
-import { useState } from 'react'; // Copied from fixtures/laggy-search/SearchPage.tsx (test/example.test.ts keeps them the same).
+import { useState } from 'react'; // Same as fixtures/laggy-search/SearchPage.tsx in the Rendertrail repo (a test there keeps the two the same).
 import { useDebounce, useResults } from './hooks';
 import { Header, Layout, Sidebar } from './ui';
 import { SearchBox } from './SearchBox';

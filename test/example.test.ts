@@ -7,6 +7,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { BRAND } from '../src/brand.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const FIXTURE = path.join(ROOT, 'fixtures', 'laggy-search');
@@ -22,7 +23,7 @@ describe('examples/laggy-search', () => {
   });
 
   it.each(copies)('%s is the same as the fixture', (name) => {
-    const note = ` // Copied from fixtures/laggy-search/${name} (test/example.test.ts keeps them the same).`;
+    const note = ` // Same as fixtures/laggy-search/${name} in the ${BRAND.displayName} repo (a test there keeps the two the same).`;
     const lines = read(path.join(EXAMPLE, name)).split('\n');
     expect(lines[0]?.endsWith(note), `${name}: first line should end with the copy note`).toBe(true);
     lines[0] = lines[0]?.slice(0, -note.length) ?? '';

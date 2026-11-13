@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react'; // Copied from fixtures/laggy-search/ui.tsx (test/example.test.ts keeps them the same).
+import { memo, type ReactNode } from 'react'; // Same as fixtures/laggy-search/ui.tsx in the Rendertrail repo (a test there keeps the two the same).
 
 export function Layout({ children }: { children: ReactNode }) {
   return <main>{children}</main>;

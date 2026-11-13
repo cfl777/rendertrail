@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'; // Copied from fixtures/laggy-search/hooks.ts (test/example.test.ts keeps them the same).
+import { useEffect, useMemo, useState } from 'react'; // Same as fixtures/laggy-search/hooks.ts in the Rendertrail repo (a test there keeps the two the same).
 import { RESULTS, type Result } from './data';
 
 export function useDebounce<T>(value: T, delayMs: number): T {

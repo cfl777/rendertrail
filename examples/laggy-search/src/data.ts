@@ -1,4 +1,4 @@
-export type Result = { id: number; title: string }; // Copied from fixtures/laggy-search/data.ts (test/example.test.ts keeps them the same).
+export type Result = { id: number; title: string }; // Same as fixtures/laggy-search/data.ts in the Rendertrail repo (a test there keeps the two the same).
 export type Filters = { sort: 'recent' | 'relevance'; tags: string[] };
 
 const TOPICS = ['hello world in React', 'memo and props', 'effects and state', 'keys and lists'];

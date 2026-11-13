@@ -1,4 +1,4 @@
-import { memo } from 'react'; // Copied from fixtures/laggy-search/ResultsList.tsx (test/example.test.ts keeps them the same).
+import { memo } from 'react'; // Same as fixtures/laggy-search/ResultsList.tsx in the Rendertrail repo (a test there keeps the two the same).
 import { ResultRow } from './ResultRow';
 import type { Filters, Result } from './data';
 

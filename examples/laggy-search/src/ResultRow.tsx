@@ -1,4 +1,4 @@
-import type { Result } from './data'; // Copied from fixtures/laggy-search/ResultRow.tsx (test/example.test.ts keeps them the same).
+import type { Result } from './data'; // Same as fixtures/laggy-search/ResultRow.tsx in the Rendertrail repo (a test there keeps the two the same).
 
 // Deliberately slow (about 0.06 ms per row) so wasted renders cost real time.
 function busyWait(ms: number) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'; // Copied from fixtures/laggy-search/SearchBox.tsx (test/example.test.ts keeps them the same).
+import { useEffect, useState } from 'react'; // Same as fixtures/laggy-search/SearchBox.tsx in the Rendertrail repo (a test there keeps the two the same).
 
 type SearchBoxProps = {
   value: string;
