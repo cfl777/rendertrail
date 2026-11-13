@@ -12,6 +12,7 @@ import {
   type StoredRun,
 } from '../shared/types.js';
 import { compareRuns, missingBaseline } from '../store/compare.js';
+import { recordCounts } from '../store/counts.js';
 import { listRunIds, loadRun, newRunId, resolveRunsDir, saveRun } from '../store/runs.js';
 
 export const INSPECT_RENDER_DESCRIPTION =
@@ -76,6 +77,7 @@ export async function inspectRender(input: InspectRenderInput, runsDirOverride?:
       keystroke: analysis.keystroke,
       ...(comparison ? { comparison } : {}),
     };
+    await recordCounts(output); // only when the user opted in (off by default); never throws
     const text = formatAnalysis({
       summary: result.summary,
       steps: analysis.steps,

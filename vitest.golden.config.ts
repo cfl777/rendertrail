@@ -7,7 +7,8 @@ import { BRAND } from './src/brand.js';
 export default defineConfig({
   test: {
     // Runs stored by the tests (and by servers they spawn) go to a temp folder, never the real home.
-    env: { [BRAND.runsDirEnv]: path.join(os.tmpdir(), `${BRAND.name}-test-runs`) },
+    // Counting stays off whatever the developer's own settings say.
+    env: { [BRAND.runsDirEnv]: path.join(os.tmpdir(), `${BRAND.name}-test-runs`), [BRAND.telemetryEnv]: '0' },
     root: '.',
     include: ['test/**/*.golden.test.ts'],
     testTimeout: 120_000,

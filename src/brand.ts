@@ -15,4 +15,6 @@ export const BRAND = {
   homeDir: '.rendertrail',
   /** Environment variable that overrides the runs folder (tests use it to stay out of the real home). */
   runsDirEnv: 'RENDERTRAIL_RUNS_DIR',
+  /** Environment variable that turns the opt-in anonymous counts on (1) or off (0). */
+  telemetryEnv: 'RENDERTRAIL_TELEMETRY',
 } as const;
