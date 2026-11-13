@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -9,6 +9,7 @@ import {
   emptyCounts,
   isoWeek,
   parseCounts,
+  readConfig,
   recordCounts,
   tally,
   telemetryStatus,
@@ -23,22 +24,48 @@ async function result(name: string): Promise<InspectRenderOutput> {
 
 const NOW = new Date('2026-11-13T12:00:00Z');
 
+const none = { value: null, problem: null };
+const optedIn = { value: { telemetry: true }, problem: null };
+
 describe('telemetrySwitch', () => {
-  it('is off by default', () => {
-    expect(telemetrySwitch({}, null)).toEqual({ on: false, reason: 'the default' });
-    expect(telemetrySwitch({}, { telemetry: 'yes' }).on).toBe(false);
+  it('is off by default, and only a real true in the config turns it on', () => {
+    expect(telemetrySwitch({}, none)).toEqual({ on: false, reason: 'the default' });
+    expect(telemetrySwitch({}, { value: { telemetry: 'yes' }, problem: null }).on).toBe(false);
+    expect(telemetrySwitch({}, optedIn)).toEqual({ on: true, reason: '"telemetry": true in config.json' });
   });
-  it('turns on with RENDERTRAIL_TELEMETRY=1 or "telemetry": true in the config', () => {
-    expect(telemetrySwitch({ RENDERTRAIL_TELEMETRY: '1' }, null).on).toBe(true);
-    expect(telemetrySwitch({}, { telemetry: true }).on).toBe(true);
+
+  it.each(['1', 'true', 'YES', ' on '])('RENDERTRAIL_TELEMETRY=%j turns it on', (value) => {
+    expect(telemetrySwitch({ RENDERTRAIL_TELEMETRY: value }, none).on).toBe(true);
   });
-  it('RENDERTRAIL_TELEMETRY=0 beats the config, and DO_NOT_TRACK beats everything', () => {
-    expect(telemetrySwitch({ RENDERTRAIL_TELEMETRY: '0' }, { telemetry: true }).on).toBe(false);
-    expect(telemetrySwitch({ DO_NOT_TRACK: '1', RENDERTRAIL_TELEMETRY: '1' }, { telemetry: true })).toEqual({
+
+  it.each(['0', 'false', 'No', ' OFF '])('RENDERTRAIL_TELEMETRY=%j turns it off, even with the config opted in', (value) => {
+    expect(telemetrySwitch({ RENDERTRAIL_TELEMETRY: value }, optedIn).on).toBe(false);
+  });
+
+  it.each(['2', 'enable', 'y'])('an unrecognised RENDERTRAIL_TELEMETRY=%j is off, whatever the config says', (value) => {
+    const state = telemetrySwitch({ RENDERTRAIL_TELEMETRY: value }, optedIn);
+    expect(state.on).toBe(false);
+    expect(state.reason).toContain('unrecognised value');
+  });
+
+  it('an empty RENDERTRAIL_TELEMETRY leaves it to the config', () => {
+    expect(telemetrySwitch({ RENDERTRAIL_TELEMETRY: '' }, optedIn).on).toBe(true);
+  });
+
+  it('a config.json that cannot be read keeps it off and says so', () => {
+    expect(telemetrySwitch({}, { value: null, problem: "config.json couldn't be read (it isn't valid JSON)" })).toEqual({
       on: false,
-      reason: 'DO_NOT_TRACK is set',
+      reason: "config.json couldn't be read (it isn't valid JSON)",
     });
-    expect(telemetrySwitch({ DO_NOT_TRACK: '0', RENDERTRAIL_TELEMETRY: '1' }, null).on).toBe(true);
+  });
+
+  it('DO_NOT_TRACK beats everything, for any value except empty, 0 and false', () => {
+    for (const value of ['1', 'true', 'yes', 'anything']) {
+      expect(telemetrySwitch({ DO_NOT_TRACK: value, RENDERTRAIL_TELEMETRY: '1' }, optedIn)).toEqual({ on: false, reason: 'DO_NOT_TRACK is set' });
+    }
+    for (const value of ['', '0', 'false', 'FALSE']) {
+      expect(telemetrySwitch({ DO_NOT_TRACK: value, RENDERTRAIL_TELEMETRY: '1' }, none).on).toBe(true);
+    }
   });
 });
 
@@ -127,5 +154,26 @@ describe('recordCounts', () => {
     expect(status).toContain('Sending is not implemented');
     expect(status).toContain('"week":"2026-W46","runs":2');
     expect(await telemetryStatus({ env: { DO_NOT_TRACK: '1' }, home, now: NOW })).toContain('Anonymous counts: off (DO_NOT_TRACK is set).');
+    // No temp files left behind.
+    expect((await readdir(home)).sort()).toEqual(['config.json', 'counts.json']);
+  });
+
+  it('reads a config.json saved with a byte order mark (Windows Notepad)', async () => {
+    await writeFile(path.join(home, 'config.json'), `${String.fromCharCode(0xfeff)}{ "telemetry": true }`);
+    expect(await readConfig(home)).toEqual({ value: { telemetry: true }, problem: null });
+    expect(await recordCounts(await result('unfixed'), { env: {}, home, now: NOW })).toBe(true);
+  });
+
+  it("stays off and says so when config.json isn't valid JSON", async () => {
+    await writeFile(path.join(home, 'config.json'), '{ telemetry: true }');
+    expect(await recordCounts(await result('unfixed'), { env: {}, home, now: NOW })).toBe(false);
+    expect(await telemetryStatus({ env: {}, home, now: NOW })).toContain("Anonymous counts: off (config.json couldn't be read (it isn't valid JSON)).");
+  });
+
+  it('removes its temp file when the write fails', async () => {
+    await writeFile(path.join(home, 'config.json'), '{ "telemetry": true }');
+    await mkdir(path.join(home, 'counts.json')); // a folder where the file should go: the rename fails
+    expect(await recordCounts(await result('unfixed'), { env: {}, home, now: NOW })).toBe(false);
+    expect((await readdir(home)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 });

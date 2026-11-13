@@ -6,7 +6,8 @@
  * What is counted is fixed by `tally` and `buildPayload`, which read only rule ids and comparison
  * flags: never code, file or component names, paths, run ids or anything about the machine.
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { BRAND } from '../brand.js';
@@ -50,32 +51,55 @@ export function homeFolder(): string {
 export const CONFIG_FILE = 'config.json';
 export const COUNTS_FILE = 'counts.json';
 
-function isSet(value: string | undefined): boolean {
+/** DO_NOT_TRACK counts as set for any value except empty, "0" and "false" (the consoledonottrack.com convention). */
+function doNotTrack(value: string | undefined): boolean {
   const v = value?.trim().toLowerCase();
   return v !== undefined && v !== '' && v !== '0' && v !== 'false';
 }
 
+const ON_VALUES = ['1', 'true', 'yes', 'on'];
+const OFF_VALUES = ['0', 'false', 'no', 'off'];
+
+/** The config file as read: its JSON, or why it couldn't be read. A missing file is no problem. */
+export interface ConfigRead {
+  value: unknown;
+  problem: string | null;
+}
+
 /**
- * Off by default. DO_NOT_TRACK always turns it off; then RENDERTRAIL_TELEMETRY=1 or 0; then
- * `"telemetry": true` in ~/.rendertrail/config.json.
+ * Off by default. DO_NOT_TRACK always turns it off. Then RENDERTRAIL_TELEMETRY when it's set and
+ * not empty: 1/true/yes/on turns it on, 0/false/no/off turns it off, anything else is off (an
+ * unrecognised value never turns counting on). Then `"telemetry": true` in ~/.rendertrail/config.json.
  */
-export function telemetrySwitch(env: NodeJS.ProcessEnv, config: unknown): TelemetrySwitch {
-  if (isSet(env.DO_NOT_TRACK)) return { on: false, reason: 'DO_NOT_TRACK is set' };
-  const flag = env[BRAND.telemetryEnv]?.trim();
-  if (flag === '1') return { on: true, reason: `${BRAND.telemetryEnv}=1` };
-  if (flag === '0') return { on: false, reason: `${BRAND.telemetryEnv}=0` };
-  if (typeof config === 'object' && config !== null && (config as { telemetry?: unknown }).telemetry === true) {
+export function telemetrySwitch(env: NodeJS.ProcessEnv, config: ConfigRead): TelemetrySwitch {
+  if (doNotTrack(env.DO_NOT_TRACK)) return { on: false, reason: 'DO_NOT_TRACK is set' };
+  const raw = env[BRAND.telemetryEnv];
+  const flag = raw?.trim().toLowerCase();
+  if (flag) {
+    if (ON_VALUES.includes(flag)) return { on: true, reason: `${BRAND.telemetryEnv}=${raw?.trim()}` };
+    if (OFF_VALUES.includes(flag)) return { on: false, reason: `${BRAND.telemetryEnv}=${raw?.trim()}` };
+    return { on: false, reason: `${BRAND.telemetryEnv} has an unrecognised value; use 1 or 0` };
+  }
+  if (config.problem) return { on: false, reason: config.problem };
+  const value = config.value;
+  if (typeof value === 'object' && value !== null && (value as { telemetry?: unknown }).telemetry === true) {
     return { on: true, reason: `"telemetry": true in ${CONFIG_FILE}` };
   }
   return { on: false, reason: 'the default' };
 }
 
-/** The config file, or null when it's missing or not valid JSON (then nothing is turned on). */
-export async function readConfig(home = homeFolder()): Promise<unknown> {
+/** Reads config.json (a UTF-8 byte order mark is fine). Missing: no problem; not valid JSON: a problem, and counting stays off. */
+export async function readConfig(home = homeFolder()): Promise<ConfigRead> {
+  let text: string;
   try {
-    return JSON.parse(await readFile(path.join(home, CONFIG_FILE), 'utf8')) as unknown;
+    text = await readFile(path.join(home, CONFIG_FILE), 'utf8');
   } catch {
-    return null;
+    return { value: null, problem: null };
+  }
+  try {
+    return { value: JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as unknown, problem: null };
+  } catch {
+    return { value: null, problem: `${CONFIG_FILE} couldn't be read (it isn't valid JSON)` };
   }
 }
 
@@ -186,9 +210,14 @@ export async function recordCounts(output: InspectRenderOutput, options: CountOp
     const next = addCounts(await readCounts(home), isoWeek(options.now ?? new Date()), delta);
     await mkdir(home, { recursive: true });
     const target = path.join(home, COUNTS_FILE);
-    const temp = `${target}.${process.pid}.tmp`;
-    await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-    await rename(temp, target);
+    const temp = `${target}.${randomBytes(6).toString('hex')}.tmp`;
+    try {
+      await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+      await rename(temp, target);
+    } catch (err) {
+      await rm(temp, { force: true }).catch(() => {});
+      throw err;
+    }
     return true;
   } catch {
     return false;

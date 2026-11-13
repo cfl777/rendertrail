@@ -77,7 +77,10 @@ export async function inspectRender(input: InspectRenderInput, runsDirOverride?:
       keystroke: analysis.keystroke,
       ...(comparison ? { comparison } : {}),
     };
-    await recordCounts(output); // only when the user opted in (off by default); never throws
+    // Only when the user opted in (off by default). Not awaited: counting never delays or breaks the result.
+    void Promise.resolve()
+      .then(() => recordCounts(output))
+      .catch(() => {});
     const text = formatAnalysis({
       summary: result.summary,
       steps: analysis.steps,
