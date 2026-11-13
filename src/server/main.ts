@@ -10,6 +10,9 @@ import {
   NodeStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/node';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import pkg from '../../package.json' with { type: 'json' };
+import { BRAND } from '../brand.js';
+import { telemetryStatus } from '../store/counts.js';
 import { createServer } from './server.js';
 
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -61,7 +64,36 @@ function startHttp(port: number): void {
   });
 }
 
-if (process.argv.includes('--http')) {
+const HELP = `${BRAND.displayName} ${pkg.version}: records how React components render in headless Chrome and explains the main performance problem.
+
+Usage: ${BRAND.name} [option]
+
+  (no option)          Start the MCP server over stdio. Claude Desktop and Claude Code run this.
+  --http               Start the MCP server over HTTP on http://127.0.0.1:3001/mcp (PORT overrides).
+  --telemetry-status   Show whether the opt-in anonymous counts are on, and the counts so far.
+  --version, -v        Print the version.
+  --help, -h           Print this help.
+
+Runs are stored in ~/${BRAND.homeDir}/runs (${BRAND.runsDirEnv} overrides). Needs Google Chrome, or
+Playwright's Chromium. More: ${pkg.homepage}
+`;
+
+const args = process.argv.slice(2);
+const KNOWN = ['--http', '--version', '-v', '--help', '-h', '--telemetry-status'];
+const unknown = args.filter((arg) => !KNOWN.includes(arg));
+
+if (unknown.length) {
+  console.error(`Unknown option: ${unknown.join(' ')}
+
+${HELP}`);
+  process.exit(2);
+} else if (args.includes('--version') || args.includes('-v')) {
+  console.log(pkg.version);
+} else if (args.includes('--help') || args.includes('-h')) {
+  console.log(HELP);
+} else if (args.includes('--telemetry-status')) {
+  console.log(await telemetryStatus());
+} else if (args.includes('--http')) {
   startHttp(Number(process.env.PORT ?? 3001));
 } else {
   startStdio().catch((err: unknown) => {

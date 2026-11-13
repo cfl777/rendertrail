@@ -1,7 +1,9 @@
 /**
  * Runs a bundled component in headless Chrome, plays the steps and collects the trace.
  */
+import { createRequire } from 'node:module';
 import { chromium, type Browser, type Page } from 'playwright-core';
+import { BRAND } from '../brand.js';
 import type { RecordedTrace, Step } from '../shared/types.js';
 import { DEFAULT_TYPE_DELAY_MS, LIMITS, MAX_PAGE_ERRORS } from './limits.js';
 
@@ -34,6 +36,30 @@ export interface LaunchedBrowser {
   label: string;
 }
 
+/**
+ * The command that installs the Chromium build this playwright-core expects. The version is pinned:
+ * a plain `npx playwright-core install` would fetch the latest release, whose Chromium may not match.
+ */
+export function chromiumInstallCommand(): string {
+  const pkg = createRequire(import.meta.url)('playwright-core/package.json') as { version?: string };
+  return `npx playwright-core@${pkg.version ?? 'latest'} install chromium`;
+}
+
+/** What to tell someone who has neither Chrome nor Playwright's Chromium. */
+export function noBrowserError(chromeError: string, chromiumError: string): RecorderError {
+  return new RecorderError(
+    'browser',
+    `No browser to record in. ${BRAND.displayName} uses your installed Google Chrome and couldn't find or start it.`,
+    [
+      'Fix it once, either way, then call inspect_render again (no restart needed):',
+      '  - install Google Chrome: https://www.google.com/chrome/',
+      `  - or download Playwright's Chromium (about 150 MB) by running this in a terminal: ${chromiumInstallCommand()}`,
+      `Chrome: ${chromeError}`,
+      `Chromium: ${chromiumError}`,
+    ],
+  );
+}
+
 /** The installed Chrome first (no download); Playwright's Chromium as the fallback. */
 export async function launchBrowser(): Promise<LaunchedBrowser> {
   let chromeError = '';
@@ -48,11 +74,7 @@ export async function launchBrowser(): Promise<LaunchedBrowser> {
     return { browser, label: `Chromium ${browser.version()}` };
   } catch (err) {
     const chromiumError = err instanceof Error ? (err.message.split('\n')[0] ?? err.message) : 'Unknown error';
-    throw new RecorderError(
-      'browser',
-      "Couldn't start a browser. Install Google Chrome, or install Playwright's Chromium (about 150 MB) with: npx playwright-core install chromium",
-      [`Chrome: ${chromeError}`, `Chromium: ${chromiumError}`],
-    );
+    throw noBrowserError(chromeError, chromiumError);
   }
 }
 

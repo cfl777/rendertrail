@@ -19,7 +19,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build # runs typecheck first
-      - run: npm test
+      - run: npm test # includes manifest.json vs package.json drift (test/package.test.ts)
+      # What npm would publish (built above, so skip prepack's second build).
+      - run: npm pack --dry-run --ignore-scripts
+      - run: npx mcpb validate manifest.json
 
   golden:
     name: Golden tests (React ${{ matrix.react }})
