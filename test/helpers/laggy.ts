@@ -10,6 +10,8 @@ export function laggyFiles(): { path: string; content: string }[] {
   const dir = path.join(ROOT, 'fixtures', 'laggy-search');
   return readdirSync(dir)
     .filter((n) => /\.tsx?$/.test(n))
+    // readdir order differs by OS (case-insensitive on Windows, unsorted on Linux): sort the same way everywhere.
+    .sort((a, b) => (a.toUpperCase() < b.toUpperCase() ? -1 : a.toUpperCase() > b.toUpperCase() ? 1 : 0))
     .map((n) => ({ path: n, content: readFileSync(path.join(dir, n), 'utf8') }));
 }
 
