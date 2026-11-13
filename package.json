@@ -33,17 +33,19 @@
   },
   "files": [
     "dist/server.js",
+    "dist/start.js",
     "dist/card.html",
     "dist/instrument.js"
   ],
   "scripts": {
     "build": "npm run typecheck && npm run build:card && npm run build:server && npm run build:instrument",
     "build:card": "vite build",
-    "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server.js --banner:js=\"#!/usr/bin/env node\"",
+    "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:./start.js --outfile=dist/server.js --banner:js=\"#!/usr/bin/env node\" && esbuild src/server/start.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/start.js",
     "build:instrument": "esbuild src/recorder/page/instrument.ts --bundle --platform=browser --format=iife --target=es2022 --minify-syntax --keep-names --outfile=dist/instrument.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/recorder/page/tsconfig.json && tsc -p ui/tsconfig.json && tsc -p ui/tsconfig.node.json",
     "test": "vitest run",
     "test:golden": "npm run build && vitest run --config vitest.golden.config.ts",
+    "test:pack": "npm run build && node scripts/test-pack.mjs",
     "start": "node dist/server.js",
     "start:http": "node dist/server.js --http",
     "card:results": "node scripts/card-results.mjs",
@@ -54,15 +56,15 @@
     "demo:gif": "node scripts/demo-gif.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^2.0.4",
-    "@modelcontextprotocol/node": "^2.1.2",
-    "@modelcontextprotocol/server": "^2.4.0",
-    "esbuild": "^0.28.2",
-    "playwright-core": "^1.63.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "typescript": "^6.0.3",
-    "zod": "^4.6.7"
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "esbuild": "0.28.2",
+    "playwright-core": "1.63.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "6.0.3",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "2.1.2",

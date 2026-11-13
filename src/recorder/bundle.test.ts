@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { bundleApp, findAliased, findFile, namedImportsOf, normalizePath } from './bundle.js';
+import { bundleApp, findAliased, findFile, loadInstrumentation, namedImportsOf, normalizePath } from './bundle.js';
 
 describe('normalizePath / findFile', () => {
   it('normalizes separators and leading ./ or /', () => {
@@ -117,5 +120,18 @@ describe('bundleApp', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.details.join('\n')).toContain('"B"');
+  });
+});
+
+describe('loadInstrumentation', () => {
+  it("says what's missing when neither instrument.js nor its source exists, and tries again next time", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'rt-instrument-'));
+    try {
+      await expect(loadInstrumentation(dir)).rejects.toThrow(/the page instrumentation is missing \(no .*instrument\.js\)\. Reinstall the package/);
+      await writeFile(path.join(dir, 'instrument.js'), '/* built */');
+      await expect(loadInstrumentation(dir)).resolves.toBe('/* built */');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
