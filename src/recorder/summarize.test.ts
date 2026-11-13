@@ -108,4 +108,12 @@ describe('summarize', () => {
     expect(summary.stable).toBe(false);
     expect(summary.instability.length).toBeGreaterThan(0);
   });
+
+  it('takes timings only from the runs that rendered the same as run 1', () => {
+    const extra = trace(50);
+    extra.commits.splice(1, 0, { ...extra.commits[2]!, index: 1 });
+    const summary = summarize([trace(5), extra, trace(9, 3), trace(7)], meta);
+    expect(summary.commits[1]?.renderMsRuns).toEqual([5, 7]);
+    expect(summary.commits[2]?.renderMsRuns).toEqual([0.1, 0.1]);
+  });
 });

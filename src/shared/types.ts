@@ -129,7 +129,7 @@ export interface ComponentGroup {
 export interface CommitSummary {
   index: number;
   trigger: CommitTrigger;
-  /** Median over the runs that recorded this commit. */
+  /** Median over run 1 and the runs whose render counts matched it in every commit. */
   renderMs: number;
   renderMsRuns: number[];
   rendered: ComponentGroup[];
