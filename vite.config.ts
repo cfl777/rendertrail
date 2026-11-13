@@ -20,6 +20,8 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: false,
+    // One inlined file has nothing to preload; without this Vite adds a polyfill that calls fetch().
+    modulePreload: { polyfill: false },
     rolldownOptions: {
       input: fileURLToPath(new URL('./ui/card.html', import.meta.url)),
     },

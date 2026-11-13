@@ -38,7 +38,7 @@ export interface LaunchedBrowser {
 
 /**
  * The command that installs the Chromium build this playwright-core expects. The version is pinned:
- * a plain `npx playwright-core install` would fetch the latest release, whose Chromium may not match.
+ * a plain `npx playwright-core install` would get the latest release, whose Chromium may not match.
  */
 export function chromiumInstallCommand(): string {
   const pkg = createRequire(import.meta.url)('playwright-core/package.json') as { version?: string };
