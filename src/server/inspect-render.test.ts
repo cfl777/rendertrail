@@ -6,6 +6,10 @@ import { laggyFiles, savedTrace } from '../../test/helpers/laggy.js';
 import { SCHEMA_VERSION, type InspectRenderOutput } from '../shared/types.js';
 import { inspectRender } from './inspect-render.js';
 
+// Counting is replaced with a stand-in the tests control (see the last test).
+const counts = vi.hoisted(() => ({ recordCounts: vi.fn(async () => false) }));
+vi.mock('../store/counts.js', () => counts);
+
 // No browser here: the recorder returns the saved laggy-search trace.
 vi.mock('../recorder/index.js', () => ({
   recordRender: async () => {
@@ -56,5 +60,23 @@ describe('inspectRender', () => {
     expect(text).toContain("This run couldn't be saved");
     expect(text).not.toContain('Run id:');
     expect(text).toContain('1. ResultsList (memo)');
+  });
+
+  it('returns the result whatever counting does: throws, rejects or never finishes', async () => {
+    const baseline = textOf(await inspectRender(input, dir));
+    for (const misbehave of [
+      () => {
+        throw new Error('disk full');
+      },
+      () => Promise.reject(new Error('disk full')),
+      () => new Promise<boolean>(() => {}),
+    ]) {
+      counts.recordCounts.mockImplementationOnce(misbehave as () => Promise<boolean>);
+      const result = await inspectRender(input, dir);
+      const beforeRunId = (text: string): string => text.slice(0, text.indexOf('Run id'));
+      expect(beforeRunId(textOf(result))).toBe(beforeRunId(baseline));
+      expect('error' in (result.structuredContent as InspectRenderOutput)).toBe(false);
+    }
+    expect(counts.recordCounts).toHaveBeenCalled();
   });
 });

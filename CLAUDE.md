@@ -24,7 +24,7 @@ An open-source MCP App. It records how React components render in headless Chrom
 ## Commands
 
 - Install: `npm install`
-- Build: `npm run build` (type-checks, then builds the card to `dist/card.html`, the server to `dist/server.js` and the page instrumentation to `dist/instrument.js`)
+- Build: `npm run build` (type-checks, then builds the card to `dist/card.html`, the command to `dist/server.js`, the servers it starts to `dist/start.js` and the page instrumentation to `dist/instrument.js`)
 - Type-check only: `npm run typecheck` (server, page instrumentation in `src/recorder/page/`, card)
 - Unit tests: `npm test` (Vitest, no browser) — includes the card component tests (jsdom) in `ui/src/*.test.tsx`
 - Card harness: `npm run dev:card` (http://127.0.0.1:5177/) renders the card in every state from saved real results in `ui/dev/results/`, with a state, theme and width picker; no host needed
@@ -33,5 +33,12 @@ An open-source MCP App. It records how React components render in headless Chrom
 - Golden tests: `npm run test:golden` (builds first, then records `fixtures/` in a real browser: the installed Chrome, else Playwright's Chromium from `npx playwright-core install chromium`). Counts come from `fixtures/*/expected.json`, a machine-readable copy of `EXPECTED.md`; keep the two in step. To check React 18: `npm install --no-save react@18.3.1 react-dom@18.3.1`, run it, then `npm install` to go back. Also covered: network isolation of the recorded page, and a stdio smoke test of `dist/server.js`. CI runs both React versions.
 - Regenerate the analyzer's unit-test traces (`test/fixtures/traces/`) from the real recorder: `RT_SAVE_TRACES=1 npm run test:golden`
 - Runs are stored in `~/.rendertrail/runs` (the last 50). `RENDERTRAIL_RUNS_DIR` overrides the folder and must be an absolute path; both test configs point it at a temp folder.
+- Package check: `npm run test:pack` (packs the npm tarball, installs it in a temp folder, runs `--version` and a stdio handshake: the package as a stranger gets it). `npm pack` builds first (`prepack`); the tarball holds only `dist/server.js`, `dist/start.js`, `dist/card.html`, `dist/instrument.js`.
+- MCP Bundle: `npm run bundle` (builds, then `dist/rendertrail.mcpb` with `@anthropic-ai/mcpb`; on Windows it writes a Windows-only `dist/rendertrail-win32.mcpb`, so release bundles come from the CI artifact). `manifest.json` mirrors `package.json` and `src/brand.ts`; `test/package.test.ts` fails on drift. Check it with `npx mcpb validate manifest.json`.
+- Demo GIF: `npm run demo:gif` (`docs/demo.gif` from the card harness; `RT_DEMO_FRAMES=<existing folder>` also saves PNG frames).
+- Command line: `node dist/server.js --version | --help | --telemetry-status`.
+- Anonymous counts: off by default and never sent. On with `RENDERTRAIL_TELEMETRY=1` or `{"telemetry": true}` in `~/.rendertrail/config.json`; `DO_NOT_TRACK=1` always turns them off; they live in `~/.rendertrail/counts.json`. Both test configs force them off. `test/no-network.test.ts` is a tripwire against outgoing network code.
+- `examples/laggy-search` is a standalone app (its own `npm install`, not part of the root build) and must stay the same as `fixtures/laggy-search`; `test/example.test.ts` fails on drift.
+- Runtime `dependencies` are pinned exactly (the published package has no lockfile); `test/package.test.ts` fails on a range.
 - Run the server over stdio: `node dist/server.js` (`npm start`). This is what Claude Desktop and Claude Code launch.
 - Run the server over HTTP for the ext-apps basic-host: `npm run start:http` (`http://127.0.0.1:3001/mcp`, `PORT` overrides)

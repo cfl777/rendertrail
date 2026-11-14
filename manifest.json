@@ -1,0 +1,58 @@
+{
+  "manifest_version": "0.3",
+  "name": "rendertrail",
+  "display_name": "Rendertrail",
+  "version": "0.1.0",
+  "description": "Records how a React component renders in headless Chrome and explains the main performance problem in a card, with the line to change.",
+  "long_description": "Claude passes in a few component files and a short interaction, such as typing into a search box. Rendertrail runs them in headless Chrome on your computer, records every React render with real timings, and shows the main problem in a card: what is wrong, what it costs, which components re-rendered for nothing, and the exact line to change. After Claude applies a fix, the same interaction runs again and the card shows before and after. Everything runs locally: the recorded page has no network access, and runs are stored in ~/.rendertrail/runs. Needs Google Chrome (or Playwright's Chromium).",
+  "author": {
+    "name": "cfl777",
+    "url": "https://github.com/cfl777"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cfl777/rendertrail"
+  },
+  "homepage": "https://github.com/cfl777/rendertrail#readme",
+  "documentation": "https://github.com/cfl777/rendertrail#readme",
+  "support": "https://github.com/cfl777/rendertrail/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/server.js"
+      ],
+      "env": {}
+    }
+  },
+  "tools": [
+    {
+      "name": "inspect_render",
+      "description": "Record how a React component renders while someone interacts with it, and explain the main performance problem. Use it when a React UI feels slow or re-renders too often. Pass only the files needed to render the component (replace data fetching with static data), the file to mount, and a short interaction, such as typing into an input. Returns the main problem, what it costs and the line to change. To check a fix, call it again with the changed files and `baselineRunId`."
+    }
+  ],
+  "tools_generated": false,
+  "keywords": [
+    "react",
+    "performance",
+    "re-render",
+    "mcp",
+    "mcp-app",
+    "model-context-protocol",
+    "claude",
+    "profiler",
+    "memo"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=22.0.0"
+    }
+  }
+}

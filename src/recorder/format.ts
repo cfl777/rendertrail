@@ -29,6 +29,7 @@ export function formatError(error: RecordError): string {
   const lines = [`Couldn't record the component: ${error.message}`];
   if (error.details.length) lines.push(...error.details.map((d) => `  ${d.replace(/\n/g, '\n  ')}`));
   lines.push(...stubLines(error.stubs));
-  lines.push('Fix the input and call inspect_render again.');
+  // A missing browser isn't the input's fault: its details already say what to do.
+  if (error.kind !== 'browser') lines.push('Fix the input and call inspect_render again.');
   return lines.join('\n');
 }

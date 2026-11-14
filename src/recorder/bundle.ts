@@ -2,6 +2,7 @@
  * Bundles the files Claude passed in (held in memory) into one browser script that mounts the
  * entry component with production React and `react-dom/profiling`, plus the page instrumentation.
  */
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -221,25 +222,40 @@ export async function bundleApp(req: BundleRequest): Promise<BundleResult> {
   }
 }
 
-let instrumentation: Promise<string> | undefined;
+const instrumentation = new Map<string, Promise<string>>();
 
 /**
  * The page instrumentation (bippy inlined). The build puts it at dist/instrument.js next to
- * dist/server.js; when running from source (tests) it's bundled from page/instrument.ts.
+ * dist/server.js; when running from source (tests) it's bundled from page/instrument.ts. A failure
+ * isn't cached, so the next call tries again.
  */
-export function loadInstrumentation(): Promise<string> {
-  instrumentation ??= (async () => {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    try {
-      return await readFile(path.join(here, 'instrument.js'), 'utf8');
-    } catch {
-      const result = await build({ ...COMMON, entryPoints: [path.join(here, 'page', 'instrument.ts')] });
-      const code = result.outputFiles?.[0]?.text;
-      if (code === undefined) throw new Error('esbuild produced no instrumentation output');
-      return code;
-    }
-  })();
-  return instrumentation;
+export function loadInstrumentation(dir = path.dirname(fileURLToPath(import.meta.url))): Promise<string> {
+  let loading = instrumentation.get(dir);
+  if (!loading) {
+    loading = readInstrumentation(dir).catch((err: unknown) => {
+      instrumentation.delete(dir);
+      throw err;
+    });
+    instrumentation.set(dir, loading);
+  }
+  return loading;
+}
+
+async function readInstrumentation(dir: string): Promise<string> {
+  const built = path.join(dir, 'instrument.js');
+  try {
+    return await readFile(built, 'utf8');
+  } catch {
+    // not built: fall back to the source (running from src/)
+  }
+  const source = path.join(dir, 'page', 'instrument.ts');
+  if (!existsSync(source)) {
+    throw new Error(`the page instrumentation is missing (no ${built}). Reinstall the package, or run npm run build in a checkout.`);
+  }
+  const result = await build({ ...COMMON, entryPoints: [source] });
+  const code = result.outputFiles?.[0]?.text;
+  if (code === undefined) throw new Error('esbuild produced no instrumentation output');
+  return code;
 }
 
 /** Version of the React we record with (from our own node_modules). */
