@@ -1,0 +1,9 @@
+{
+  "name": "rendertrail",
+  "version": "0.0.1",
+  "description": "Placeholder. Rendertrail shows why a React component is slow, in a card inside Claude. First release coming soon.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/cfl777/rendertrail.git" },
+  "homepage": "https://github.com/cfl777/rendertrail#readme",
+  "files": ["README.md"]
+}
