@@ -672,39 +672,39 @@ export function findJsxProp(files: readonly ParsedFile[], component: string, pro
   return matches;
 }
 
-/**
- * Dependencies for a useMemo/useCallback around `expression`: the names it reads that are
- * declared in the component (its props and locals), minus state setters (unless `keepSetters`: then
- * an empty list means it reads nothing from the component), in order of first use.
- */
-export function dependenciesOf(expression: ts.Expression | ts.FunctionDeclaration, keepSetters = false): string[] {
-  const component = innermostNamedFunction(expression);
-  if (!component) return [];
-  const locals = new Set<string>(component.parameters.flatMap((p) => bindingNames(p.name)));
-  const setters = new Set<string>();
-  walkBody(component, (node) => {
-    if (T.isVariableDeclaration(node)) {
-      for (const n of bindingNames(node.name)) locals.add(n);
-      if (T.isArrayBindingPattern(node.name) && node.initializer && T.isCallExpression(node.initializer)) {
-        const hook = calleeName(node.initializer);
-        const second = node.name.elements[1];
-        if ((hook === 'useState' || hook === 'useReducer') && second && T.isBindingElement(second) && T.isIdentifier(second.name)) {
-          setters.add(second.name.text);
-        }
-      }
-    }
-  });
-  const own = new Set<string>(); // names declared inside the expression itself (callback parameters, locals)
+/** Names declared by a node itself: parameters, variables, function and class declarations. */
+function declaredNames(node: ts.Node): string[] {
+  if (T.isParameter(node) || T.isVariableDeclaration(node) || T.isBindingElement(node)) return bindingNames(node.name);
+  if ((T.isFunctionDeclaration(node) || T.isClassDeclaration(node)) && node.name) return [node.name.text];
+  return [];
+}
+
+/** Names a function declares in its own scope: parameters, and declarations in its body outside nested functions. */
+function scopeNames(fn: FunctionLike): string[] {
+  const names = fn.parameters.flatMap((p) => bindingNames(p.name));
+  const walk = (node: ts.Node): void => {
+    names.push(...declaredNames(node)); // a nested function declaration's name is in this scope…
+    if (isFunctionLike(node)) return; // …its insides are not
+    T.forEachChild(node, walk);
+  };
+  if (fn.body) T.forEachChild(fn.body, walk);
+  return names;
+}
+
+/** The names an expression reads that it doesn't declare itself, in order of first use; `this` as "this". */
+function freeNames(expression: ts.Node): string[] {
+  const own = new Set<string>(); // declared inside the expression (callback parameters, locals)
   const visitDecl = (node: ts.Node): void => {
-    if (T.isParameter(node) || T.isVariableDeclaration(node)) for (const n of bindingNames(node.name)) own.add(n);
+    for (const n of declaredNames(node)) own.add(n);
     T.forEachChild(node, visitDecl);
   };
   visitDecl(expression);
-  const deps: string[] = [];
+  const free: string[] = [];
   const add = (name: string): void => {
-    if (locals.has(name) && (keepSetters || !setters.has(name)) && !own.has(name) && !deps.includes(name)) deps.push(name);
+    if (!own.has(name) && !free.includes(name)) free.push(name);
   };
   const visit = (node: ts.Node): void => {
+    if (node.kind === T.SyntaxKind.ThisKeyword) add('this');
     if (T.isShorthandPropertyAssignment(node)) {
       add(node.name.text);
       return;
@@ -720,5 +720,78 @@ export function dependenciesOf(expression: ts.Expression | ts.FunctionDeclaratio
     T.forEachChild(node, visit);
   };
   visit(expression);
-  return deps;
+  return free;
+}
+
+/** State setters a function declares: `const [x, setX] = useState(…)` / useReducer. */
+function settersIn(fn: FunctionLike): Set<string> {
+  const setters = new Set<string>();
+  walkBody(fn, (node) => {
+    if (T.isVariableDeclaration(node) && T.isArrayBindingPattern(node.name) && node.initializer && T.isCallExpression(node.initializer)) {
+      const hook = calleeName(node.initializer);
+      const second = node.name.elements[1];
+      if ((hook === 'useState' || hook === 'useReducer') && second && T.isBindingElement(second) && T.isIdentifier(second.name)) setters.add(second.name.text);
+    }
+  });
+  return setters;
+}
+
+/**
+ * True when the value reads nothing declared in any function around it (parameters, locals, local
+ * functions, a `.map` callback's item, a helper's variables) and doesn't use `this`: it can move to
+ * module level unchanged.
+ */
+export function canHoist(expression: ts.Node): boolean {
+  const scoped = new Set<string>();
+  for (let current: ts.Node | undefined = expression.parent; current; current = current.parent) {
+    if (isFunctionLike(current)) for (const n of scopeNames(current)) scoped.add(n);
+  }
+  return freeNames(expression).every((n) => n !== 'this' && !scoped.has(n));
+}
+
+/**
+ * True when a hook can be called right where the value is created: the function around it is a
+ * component or a custom hook (Capitalized or useX), not a `.map` callback or a render helper.
+ */
+export function inComponentBody(expression: ts.Node): boolean {
+  for (let current: ts.Node | undefined = expression.parent; current; current = current.parent) {
+    if (!isFunctionLike(current)) continue;
+    const name = functionName(current);
+    return name !== null && /^(?:[A-Z]|use[A-Z0-9])/.test(name);
+  }
+  return false;
+}
+
+/**
+ * Dependencies for a useMemo/useCallback around `expression`: the names it reads that are
+ * declared in the component (its props, locals and local functions), minus state setters, in order
+ * of first use.
+ */
+export function dependenciesOf(expression: ts.Expression | ts.FunctionDeclaration): string[] {
+  const component = innermostNamedFunction(expression);
+  if (!component) return [];
+  const locals = new Set(scopeNames(component));
+  const setters = settersIn(component);
+  return freeNames(expression).filter((n) => locals.has(n) && !setters.has(n));
+}
+
+/**
+ * The component's state setters a function calls, and whether every call passes an updater
+ * (`setTodos((prev) => …)`), so the function needn't read that state.
+ */
+export function setterCallsIn(fn: ts.FunctionDeclaration): { setter: string; updaterOnly: boolean }[] {
+  const component = innermostNamedFunction(fn);
+  if (!component) return [];
+  const setters = settersIn(component);
+  const found = new Map<string, boolean>();
+  const visit = (node: ts.Node): void => {
+    if (T.isCallExpression(node) && T.isIdentifier(node.expression) && setters.has(node.expression.text)) {
+      const arg = node.arguments[0];
+      const updater = node.arguments.length === 1 && arg !== undefined && isFunctionValue(arg);
+      found.set(node.expression.text, (found.get(node.expression.text) ?? true) && updater);
+    }
+    T.forEachChild(node, visit);
+  };
+  if (fn.body) visit(fn.body);
+  return [...found].map(([setter, updaterOnly]) => ({ setter, updaterOnly }));
 }

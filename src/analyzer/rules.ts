@@ -19,11 +19,14 @@
 import type { Finding, FixKind, InteractionStep, RecordedCommit, RecordedTrace, RenderedComponent, SourceLocation } from '../shared/types.js';
 import { median } from '../recorder/summarize.js';
 import {
+  canHoist,
   confirmStateInEffect,
   dependenciesOf,
   findJsxProp,
+  inComponentBody,
   isFunctionValue,
   lineOf,
+  setterCallsIn,
   snippetOf,
   textOf,
   type JsxPropMatch,
@@ -162,8 +165,19 @@ interface PropSource {
   hoist: { name: string; code: string } | null;
   /** A function declared with `function name() {}` in the component, passed by name: where it's declared. */
   declaredAt: SourceLocation | null;
-  /** For declaredAt: what the function reads from the component (its dependency list). */
-  declaredDeps: string[];
+  /** For declaredAt: why its dependency list is what it is, from what the function reads. */
+  depsNote: string;
+}
+
+/** Why a declared function's useCallback list is what it is, worded from what it actually reads. */
+function dependencyNote(deps: readonly string[], setters: readonly { setter: string; updaterOnly: boolean }[]): string {
+  const code = (names: readonly string[]): string => names.map((d) => `\`${d}\``).join(', ');
+  if (deps.length) return `The dependency list holds what it reads from the component: ${code(deps)}.`;
+  if (setters.length === 0) return 'The dependency list can stay empty: it reads nothing from the component.';
+  const names = setters.map((s) => s.setter);
+  return setters.every((s) => s.updaterOnly)
+    ? `The dependency list can stay empty: it only calls ${code(names)}, with an updater (\`${names[0]}((prev) => …)\`), so it never reads the current state, and a state setter never changes.`
+    : `The dependency list can stay empty: the only thing it uses from the component is ${code(names)}, and a state setter never changes.`;
 }
 
 /** `columns` → `COLUMNS`, `sortOrder` → `SORT_ORDER`. */
@@ -202,7 +216,7 @@ function propSource(ctx: RuleContext, component: string, prop: string, type: str
   const hook: FixKind = isFunction ? 'useCallback' : 'useMemo';
   const { best, rest } = pick(findJsxProp(ctx.files, component, prop), rendered);
   const others = rest.map(attributeLocation);
-  const none = { hoist: null, declaredAt: null, declaredDeps: [] };
+  const none = { hoist: null, declaredAt: null, depsNote: '' };
   if (!best) return isFunction ? null : { location: null, others, fixKind: hook, fixCode: null, variable: null, via: [], passedInto: null, newVariable: null, ...none };
 
   // Follow a value that only passes through props up to where it's created.
@@ -237,29 +251,32 @@ function propSource(ctx: RuleContext, component: string, prop: string, type: str
   let newVariable: string | null = null;
   let hoist: PropSource['hoist'] = null;
   let declaredAt: SourceLocation | null = null;
-  let declaredDeps: string[] = [];
+  let depsNote = '';
   const expr = origin.valueExpression;
   const name = origin.variable ?? origin.attribute.name.getText(origin.file.source);
   if (expr && origin.valueKind !== 'local-function' && origin.valueKind !== 'other') {
     const body = textOf(origin.file, expr);
-    if (body.length <= 100) {
+    // A literal that reads nothing from any function around it can live outside: simpler than useMemo.
+    if (!isFunction && body.length <= 100 && canHoist(expr)) hoist = { name: constantName(name), code: `const ${constantName(name)} = ${body};` };
+    // Hook code only where a hook can be called: in the component's (or custom hook's) own body,
+    // not inside a `.map` callback or a render helper.
+    if (body.length <= 100 && inComponentBody(expr)) {
       const deps = dependenciesOf(expr);
       if (!origin.variable) newVariable = name;
       fixCode = isFunction
         ? `const ${name} = useCallback(${body}, [${deps.join(', ')}]);`
         : `const ${name} = useMemo(() => ${body.startsWith('{') ? `(${body})` : body}, [${deps.join(', ')}]);`;
-      // A literal that reads nothing from the component can live outside it: simpler than useMemo.
-      if (!isFunction && dependenciesOf(expr, true).length === 0) hoist = { name: constantName(name), code: `const ${constantName(name)} = ${body};` };
     }
   }
   const decl = origin.declaration;
   if (decl && origin.valueKind === 'local-function') {
     const params = decl.parameters.map((p) => textOf(origin.file, p)).join(', ');
     declaredAt = { file: origin.file.path, line: lineOf(origin.file, decl), snippet: `function ${name}(${params}) { … }` };
-    declaredDeps = dependenciesOf(decl);
-    fixCode = `const ${name} = useCallback((${params}) => { … }, [${declaredDeps.join(', ')}]);`;
+    const deps = dependenciesOf(decl);
+    fixCode = `const ${name} = useCallback((${params}) => { … }, [${deps.join(', ')}]);`;
+    depsNote = dependencyNote(deps, setterCallsIn(decl));
   }
-  return { ...base, fixKind: hook, fixCode, newVariable, hoist, declaredAt, declaredDeps };
+  return { ...base, fixKind: hook, fixCode, newVariable, hoist, declaredAt, depsNote };
 }
 
 /** What one wasted update looks like for a rule 1 finding (medians over the updates it happened in). */
@@ -400,11 +417,8 @@ export function unstablePropCandidates(ctx: RuleContext): Candidate[] {
           : `, created at ${where}${viaText}`;
       fixShort = source.declaredAt ? `wrap \`${source.variable}\` in ${hookName}` : `wrap it in ${hookName}`;
       const passHint = source.fixCode && source.newVariable ? `, then pass \`${source.newVariable}={${source.newVariable}}\`` : '';
-      const depsNote = source.declaredDeps.length
-        ? `The dependency list holds what it reads from the component: ${source.declaredDeps.map((d) => `\`${d}\``).join(', ')}.`
-        : 'The dependency list can stay empty: it reads nothing from the component except state setters, which never change.';
       fixLong = source.declaredAt
-        ? `Wrap \`${source.variable}\`${declared} in ${hookName} so ${component} gets the same ${thing} until its dependencies change: \`${source.fixCode}\`, keeping its body. ${depsNote}`
+        ? `Wrap \`${source.variable}\`${declared} in ${hookName} so ${component} gets the same ${thing} until its dependencies change: \`${source.fixCode}\`, keeping its body. ${source.depsNote}`
         : `Wrap it in ${hookName} so ${component} gets the same ${thing} until its contents change${source.fixCode ? `: \`${source.fixCode}\`${passHint}` : ''}.`;
     }
 
