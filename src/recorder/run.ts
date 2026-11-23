@@ -4,7 +4,7 @@
 import { createRequire } from 'node:module';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { BRAND } from '../brand.js';
-import type { RecordedTrace, Step } from '../shared/types.js';
+import type { RecordedTrace, RunTiming, Step } from '../shared/types.js';
 import { DEFAULT_TYPE_DELAY_MS, LIMITS, MAX_PAGE_ERRORS } from './limits.js';
 
 const ORIGIN = 'http://recorder.local';
@@ -81,6 +81,19 @@ export async function launchBrowser(): Promise<LaunchedBrowser> {
 export interface RunOutput {
   trace: RecordedTrace;
   pageErrors: string[];
+  timing: RunTiming;
+}
+
+/** Milliseconds since `start`, to 0.1 ms. */
+export function since(start: number): number {
+  return Math.round((performance.now() - start) * 10) / 10;
+}
+
+/** The delay a step asks for itself: a `wait`, or one typing delay per character. */
+export function scriptedDelayMs(step: Step): number {
+  if (step.action === 'wait') return step.ms;
+  if (step.action === 'type') return [...step.text].length * (step.delayMs ?? DEFAULT_TYPE_DELAY_MS);
+  return 0;
 }
 
 function isTrace(value: unknown): value is RecordedTrace {
@@ -114,7 +127,14 @@ async function playStep(page: Page, step: Step): Promise<void> {
   }
 }
 
-async function recordInPage(page: Page, instrumentation: string, steps: Step[], pageErrors: string[]): Promise<RecordedTrace> {
+async function recordInPage(
+  page: Page,
+  instrumentation: string,
+  steps: Step[],
+  pageErrors: string[],
+  timing: RunTiming,
+): Promise<RecordedTrace> {
+  let start = performance.now();
   await page.addInitScript({ content: instrumentation });
   await page.goto(`${ORIGIN}/`);
   try {
@@ -128,6 +148,9 @@ async function recordInPage(page: Page, instrumentation: string, steps: Step[], 
   if (mounted === 0 && pageErrors.length > 0) {
     throw new RecorderError('mount', 'The component threw an error while mounting.', pageErrors);
   }
+  timing.loadMountMs = since(start);
+
+  start = performance.now();
 
   for (const [index, step] of steps.entries()) {
     try {
@@ -140,14 +163,20 @@ async function recordInPage(page: Page, instrumentation: string, steps: Step[], 
       throw new RecorderError('step', `${describeStep(step, index)} failed: ${reason}.`, pageErrors);
     }
   }
+  timing.stepsMs = since(start);
+  timing.scriptedMs = steps.reduce((sum, step) => sum + scriptedDelayMs(step), 0);
 
+  start = performance.now();
   const trace: unknown = await page.evaluate('({ commits: window.__RT__.commits, errors: window.__RT__.errors, truncated: window.__RT__.truncated })');
+  timing.collectMs = since(start);
   if (!isTrace(trace)) throw new RecorderError('mount', 'The page instrumentation returned no trace.', pageErrors);
   return trace;
 }
 
 /** One run in a fresh browser context, limited to LIMITS.runTimeoutMs. */
 export async function runOnce(browser: Browser, app: string, instrumentation: string, steps: Step[]): Promise<RunOutput> {
+  const runStart = performance.now();
+  const timing: RunTiming = { contextMs: 0, loadMountMs: 0, stepsMs: 0, scriptedMs: 0, collectMs: 0, closeMs: 0, totalMs: 0 };
   // Context-wide, so popups (window.open) get the same rules; service workers can't bypass routes.
   const context = await browser.newContext({ serviceWorkers: 'block' });
   const pageErrors: string[] = [];
@@ -164,6 +193,7 @@ export async function runOnce(browser: Browser, app: string, instrumentation: st
     });
     await context.routeWebSocket(/.*/, (ws) => ws.close());
     const page = await context.newPage();
+    timing.contextMs = since(runStart);
     page.on('pageerror', (error) => keep(`Uncaught: ${error.message}`));
     page.on('console', (message) => {
       if (message.type() === 'error') keep(`console.error: ${message.text()}`);
@@ -174,10 +204,13 @@ export async function runOnce(browser: Browser, app: string, instrumentation: st
         LIMITS.runTimeoutMs,
       );
     });
-    const trace = await Promise.race([recordInPage(page, instrumentation, steps, pageErrors), timeout]);
-    return { trace, pageErrors };
+    const trace = await Promise.race([recordInPage(page, instrumentation, steps, pageErrors, timing), timeout]);
+    return { trace, pageErrors, timing };
   } finally {
     clearTimeout(timer);
+    const closeStart = performance.now();
     await context.close().catch(() => {});
+    timing.closeMs = since(closeStart);
+    timing.totalMs = since(runStart);
   }
 }

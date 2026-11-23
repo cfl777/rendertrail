@@ -14,7 +14,9 @@ vi.mock('../store/counts.js', () => counts);
 vi.mock('../recorder/index.js', () => ({
   recordRender: async () => {
     const { summary, traces } = savedTrace('SearchPage');
-    return { ok: true, summary, traces };
+    const run = { contextMs: 1, loadMountMs: 1, stepsMs: 1, scriptedMs: 0, collectMs: 1, closeMs: 1, totalMs: 5 };
+    const timing = { queueMs: 0, bundleMs: 1, instrumentationMs: 0, launchMs: 0, browserReused: true, runs: [run, run, run], summarizeMs: 1 };
+    return { ok: true, summary, traces, timing };
   },
 }));
 
@@ -50,6 +52,18 @@ describe('inspectRender', () => {
     expect(text).toContain('The stored run "r_bad000" couldn\'t be read');
     expect(text).toContain('1. ResultsList (memo)');
     expect(text).toContain(`Run id: ${output.run.id}.`);
+  });
+
+  it('adds where the time went to the run, without putting it in the text', async () => {
+    const result = await inspectRender(input, dir);
+    const output = result.structuredContent as InspectRenderOutput;
+    if ('error' in output) throw new Error(output.error.message);
+    const timing = output.run.timing;
+    expect(timing).toMatchObject({ queueMs: 0, bundleMs: 1, launchMs: 0, browserReused: true, summarizeMs: 1 });
+    expect(timing?.runs).toHaveLength(3);
+    for (const key of ['analyzeMs', 'storeMs', 'totalMs'] as const) expect(timing?.[key]).toBeGreaterThanOrEqual(0);
+    expect(timing!.totalMs).toBeGreaterThanOrEqual(timing!.analyzeMs + timing!.storeMs);
+    expect(textOf(result)).not.toMatch(/analyzeMs|timing/);
   });
 
   it('says the run could not be saved, without offering its id as a baseline', async () => {

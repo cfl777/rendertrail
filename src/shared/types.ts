@@ -327,12 +327,49 @@ export interface Comparison {
   baselineFiles: { path: string; content: string }[];
 }
 
+/** Where one run's wall-clock time went, in ms (performance.now() in the server). */
+export interface RunTiming {
+  /** New isolated browser context, its network rules and a new page. */
+  contextMs: number;
+  /** Instrumentation script, page load and the first render. */
+  loadMountMs: number;
+  /** All steps, scripted delays included. */
+  stepsMs: number;
+  /** The part of stepsMs the steps ask for: `wait` steps plus typing delays (characters × delayMs). */
+  scriptedMs: number;
+  /** Reading the trace out of the page. */
+  collectMs: number;
+  /** Closing the context. */
+  closeMs: number;
+  totalMs: number;
+}
+
+/** Where one inspect_render call's wall-clock time went, in ms. Diagnostics only: never part of a finding. */
+export interface CallTiming {
+  bundleMs: number;
+  /** Loading the page instrumentation (cached after the first call in a process). */
+  instrumentationMs: number;
+  /** Starting the browser; near 0 when a warm one was reused. */
+  launchMs: number;
+  /** True when this call used a browser left running by an earlier call. */
+  browserReused: boolean;
+  runs: RunTiming[];
+  summarizeMs: number;
+  /** The analyzer, including its first-call load of the TypeScript compiler. */
+  analyzeMs: number;
+  /** Writing the run to the runs folder. */
+  storeMs: number;
+  totalMs: number;
+}
+
 export interface RunInfo {
   /** `r_` plus 6 characters. */
   id: string;
   createdAt: string;
   summary: TraceSummary;
   steps: InteractionStep[];
+  /** Optional, additive: where this call's time went. */
+  timing?: CallTiming;
 }
 
 /** structuredContent of inspect_render. */

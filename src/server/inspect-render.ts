@@ -3,8 +3,10 @@ import { analyze } from '../analyzer/index.js';
 import { formatAnalysis } from '../analyzer/text.js';
 import { formatError } from '../recorder/format.js';
 import { recordRender } from '../recorder/index.js';
+import { since } from '../recorder/run.js';
 import {
   SCHEMA_VERSION,
+  type CallTiming,
   type Comparison,
   type InspectRenderInput,
   type InspectRenderOutput,
@@ -31,6 +33,7 @@ function errorResult(error: RecordError): CallToolResult {
  * throws: problems are normal results that explain what to fix.
  */
 export async function inspectRender(input: InspectRenderInput, runsDirOverride?: string): Promise<CallToolResult> {
+  const callStart = performance.now();
   const notes: string[] = [];
   const resolved = resolveRunsDir();
   const dir = runsDirOverride ?? resolved.dir;
@@ -38,7 +41,9 @@ export async function inspectRender(input: InspectRenderInput, runsDirOverride?:
   try {
     const result = await recordRender(input);
     if (!result.ok) return errorResult(result.error);
+    let start = performance.now();
     const analysis = await analyze({ summary: result.summary, traces: result.traces, files: input.files });
+    const analyzeMs = since(start);
 
     const id = newRunId(new Set(await listRunIds(dir)));
     const run: StoredRun = {
@@ -64,15 +69,18 @@ export async function inspectRender(input: InspectRenderInput, runsDirOverride?:
     }
 
     let saveError: string | undefined;
+    start = performance.now();
     try {
       await saveRun(run, dir);
     } catch (err) {
       saveError = err instanceof Error ? err.message : 'Unknown error';
     }
+    const storeMs = since(start);
+    const timing: CallTiming = { ...result.timing, analyzeMs, storeMs, totalMs: since(callStart) };
 
     const output: InspectRenderOutput = {
       schemaVersion: SCHEMA_VERSION,
-      run: { id, createdAt: run.createdAt, summary: result.summary, steps: analysis.steps },
+      run: { id, createdAt: run.createdAt, summary: result.summary, steps: analysis.steps, timing },
       findings: analysis.findings,
       keystroke: analysis.keystroke,
       ...(comparison ? { comparison } : {}),
