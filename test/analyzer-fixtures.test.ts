@@ -89,42 +89,47 @@ describe('cart-summary (rule 2 by clicks, with a look-alike in .then)', () => {
     expect(f.texts.summary).toContain('Fix: compute total during render: `const total = items.reduce(');
   });
 
-  it('lists only the updates inside a step, not the mount follow-up that also changed `total`', async () => {
+  it('lists the extra update of each click', async () => {
     const f = (await analyzed('cart-summary', 'Cart.tsx')).a.findings[0]!;
-    expect(f.commits).toEqual([4, 7, 10, 13]);
+    expect(f.commits).toEqual([3, 6, 9, 12]);
     expect(f).toMatchObject({ extraUpdatesPerStep: 1, stepsAffected: 4 });
   });
 
-  // On React 18 one run has recorded one more update than EXPECTED.md lists (cause not investigated).
-  // Here an extra update is inserted before the clicks, which shifts every later index by one.
-  it('stays right when run 1 has one more update before the clicks: only the indexes move', async () => {
+  // Before 2026-11-23 the fixture's mount sometimes gave one more update on React 18, one that also
+  // changed `total`. Here such an update is inserted before the first click: it must stay out of
+  // the finding (mount isn't a step), and only the later indexes move.
+  it('leaves out a `total` update before the first click, and only the indexes move', async () => {
     const saved = savedFixtureTrace('cart-summary', 'Cart.tsx');
     const first = saved.traces[0]!;
-    const commits = [...first.commits.slice(0, 2), first.commits[1]!, ...first.commits.slice(2)].map((c, index) => ({ ...c, index }));
-    const summaryCommits = [...saved.summary.commits.slice(0, 2), saved.summary.commits[1]!, ...saved.summary.commits.slice(2)].map((c, index) => ({ ...c, index }));
+    const insert = <T,>(list: readonly T[], extra: T): T[] => [...list.slice(0, 2), extra, ...list.slice(2)];
+    // A copy of click 1's `total` update, with the input count of before the first click.
+    const commits = insert(first.commits, { ...first.commits[3]!, inputSeq: first.commits[1]!.inputSeq }).map((c, index) => ({ ...c, index }));
+    const summaryCommits = insert(saved.summary.commits, saved.summary.commits[3]!).map((c, index) => ({ ...c, index }));
     const summary = { ...saved.summary, commitCount: commits.length, commits: summaryCommits };
     const a = await analyze({ summary, traces: [{ ...first, commits }], files: fixtureFiles('cart-summary') });
     expect(a.allFindings.map((f) => [f.id, f.location?.line, f.stepsAffected])).toEqual([['state-in-effect:CartSummary:setTotal', 28, 4]]);
-    expect(a.allFindings[0]!.commits).toEqual([5, 8, 11, 14]);
+    expect(a.allFindings[0]!.commits).toEqual([4, 7, 10, 13]);
   });
 
   it("keeps CartSummary's row in the tree: the card marks the extra update there", async () => {
     const { a } = await analyzed('cart-summary', 'Cart.tsx');
-    expect(a.keystroke.tree.map((r) => [r.name, r.label])).toEqual([
-      ['Cart', 'state-origin'],
-      ['CartLine', 'nothing-changed'],
+    // Which CartLine row comes first depends on which line the typical click changed.
+    const rows = a.keystroke.tree.map((r) => [r.name, r.label]);
+    expect(rows[0]).toEqual(['Cart', 'state-origin']);
+    expect(rows.at(-1)).toEqual(['CartSummary', 'needed']);
+    expect(rows.slice(1, -1).sort()).toEqual([
       ['CartLine', 'needed'],
-      ['CartSummary', 'needed'],
+      ['CartLine', 'nothing-changed'],
     ]);
   });
 
   it('groups both follow-ups (setTotal, then setQuote a microtask later) into the click that caused them', async () => {
     const { a } = await analyzed('cart-summary', 'Cart.tsx');
     expect(a.steps.map((s) => s.commits)).toEqual([
-      [3, 4, 5],
-      [6, 7, 8],
-      [9, 10, 11],
-      [12, 13, 14],
+      [2, 3, 4],
+      [5, 6, 7],
+      [8, 9, 10],
+      [11, 12, 13],
     ]);
     expect(a.keystroke.headline).toBe('Every click causes an extra update: CartSummary sets state inside an effect.');
   });

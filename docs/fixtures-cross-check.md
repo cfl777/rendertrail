@@ -10,6 +10,8 @@ Run it with `node scripts/cross-check-fixtures.mjs` (no build needed). Options: 
 
 Checked on 2026-11-13 with Chrome 157 (headless), on React 19.3.1 (three full runs of the script, 3 runs per variant each time) and React 18.3.1 (one full run, 3 runs per variant). **No disagreement.** Every number below matched in every run, on both versions, including the order of updates, what rendered in each update, and which updates came from a click or a key press.
 
+cart-summary was changed on 2026-11-23 (owner-approved: `total` now starts at the cart's total, so its mount has one follow-up instead of a React 18-dependent one or two) and re-checked the same day with `--fixture cart-summary --runs 3` on React 19.3.1 and 18.3.1: no disagreement. Its rows below are the new numbers.
+
 An "update" is one time React applied changes to the page. "Renders after mount" counts every render after the first update.
 
 ## The numbers
@@ -33,10 +35,10 @@ An "update" is one time React applied changes to the page. "Renders after mount"
 
 | | Before: expected | counted | After: expected | counted | |
 |---|---|---|---|---|---|
-| Updates | 15 | 15 | 10 | 10 | ✔ |
+| Updates | 14 | 14 | 10 | 10 | ✔ |
 | Cart | 4 | 4 | 4 | 4 | ✔ |
 | CartLine | 12 | 12 | 12 | 12 | ✔ |
-| CartSummary | 14 | 14 | 9 | 9 | ✔ |
+| CartSummary | 13 | 13 | 9 | 9 | ✔ |
 
 ### pricing-toggle
 
@@ -88,7 +90,7 @@ Timings were not compared (they depend on the machine), but they fall where EXPE
 
 **cart-summary**
 - Rule 2, CartSummary / `setTotal`: each click is followed by 2 updates that render only CartSummary; after the fix, by 1. So the fix removes exactly one extra update per click, on all 4 clicks. ✔ Agrees.
-- Not reported: the update that stays after the fix fits the shipping quote (`setQuote`), but the counter can't see which piece of state changed. Mount is followed by 2 CartSummary-only updates before the fix and 1 after. CartLine renders 3 times per click and never outside a click.
+- Not reported: the update that stays after the fix fits the shipping quote (`setQuote`), but the counter can't see which piece of state changed. Mount is followed by 1 CartSummary-only update, before and after the fix. CartLine renders 3 times per click and never outside a click.
 
 **pricing-toggle**
 - Rule 1, FeatureMatrix / `labels`: FeatureMatrix (with 80 FeatureRow) rendered in every update where PricingPage rendered: 4 from clicks and 4 extra ones. After the fix: 0. ✔ Agrees.
