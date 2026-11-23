@@ -1,0 +1,398 @@
+{
+  "title": "Fixture: theme-storefront, no findings",
+  "note": "fixtures/theme-storefront, unfixed, from its saved trace (test/fixtures/traces). See its EXPECTED.md.",
+  "input": {
+    "files": [
+      {
+        "path": "data.ts",
+        "content": "import { createContext } from 'react';\n\nexport type Theme = 'light' | 'dark';\nexport type Product = { id: number; name: string; price: number };\n\nexport const ThemeContext = createContext<Theme>('light');\n\n// 40 products with deterministic names and prices.\nexport const PRODUCTS: Product[] = Array.from({ length: 40 }, (_, i) => ({\n  id: i + 1,\n  name: `Product ${i + 1}`,\n  price: 10 + ((i * 7) % 50),\n}));\n"
+      },
+      {
+        "path": "ProductGrid.tsx",
+        "content": "import { memo, useContext } from 'react';\nimport { ThemeContext, type Product } from './data';\n\n// Deliberately slow (about 0.1 ms per card) so the renders cost real time.\nfunction busyWait(ms: number) {\n  const end = performance.now() + ms;\n  while (performance.now() < end) {\n    // do nothing\n  }\n}\n\nexport const ProductCard = memo(function ProductCard({ product }: { product: Product }) {\n  const theme = useContext(ThemeContext);\n  busyWait(0.1);\n  return (\n    <li data-theme={theme}>\n      {product.name}: {product.price} EUR\n    </li>\n  );\n});\n\ntype Layout = { columns: number; gap: number };\n\nexport const ProductGrid = memo(function ProductGrid({ products, layout }: { products: Product[]; layout: Layout }) {\n  const theme = useContext(ThemeContext);\n  return (\n    <ul data-theme={theme} data-columns={layout.columns} data-gap={layout.gap}>\n      {products.map((product) => (\n        <ProductCard key={product.id} product={product} />\n      ))}\n    </ul>\n  );\n});\n\nexport const PromoBanner = memo(function PromoBanner({ text }: { text: string }) {\n  return <p>{text}</p>;\n});\n"
+      },
+      {
+        "path": "Storefront.tsx",
+        "content": "import { useState } from 'react';\nimport { PRODUCTS, ThemeContext, type Theme } from './data';\nimport { ProductGrid, PromoBanner } from './ProductGrid';\n\nexport default function Storefront() {\n  const [theme, setTheme] = useState<Theme>('light');\n\n  return (\n    <ThemeContext.Provider value={theme}>\n      <button\n        aria-label=\"Toggle theme\"\n        onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}\n      >\n        {theme === 'light' ? 'Dark mode' : 'Light mode'}\n      </button>\n      <PromoBanner text=\"Free shipping over 50 EUR\" />\n      <ProductGrid products={PRODUCTS} layout={{ columns: 4, gap: 12 }} />\n    </ThemeContext.Provider>\n  );\n}\n"
+      }
+    ],
+    "entry": "Storefront.tsx",
+    "exportName": "default",
+    "steps": [
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle theme\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle theme\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle theme\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle theme\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      }
+    ]
+  },
+  "output": {
+    "schemaVersion": 1,
+    "run": {
+      "id": "r_th3m3s",
+      "createdAt": "2026-11-11T09:00:00.000Z",
+      "summary": {
+        "entry": "Storefront.tsx",
+        "exportName": "default",
+        "reactVersion": "19.3.1",
+        "browser": "Chrome 157.0.8103.79",
+        "steps": [
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle theme\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle theme\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle theme\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle theme\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          }
+        ],
+        "runs": 3,
+        "stable": true,
+        "instability": [],
+        "commitCount": 5,
+        "truncated": false,
+        "commits": [
+          {
+            "index": 0,
+            "trigger": "mount",
+            "renderMs": 9.8,
+            "renderMsRuns": [
+              10.7,
+              9.8,
+              9.8
+            ],
+            "rendered": [
+              {
+                "name": "Storefront",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "PromoBanner",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "ProductGrid",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "ProductCard",
+                "count": 40,
+                "memo": true,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 1,
+            "trigger": "input",
+            "renderMs": 7.3,
+            "renderMsRuns": [
+              7.3,
+              7.5,
+              7.3
+            ],
+            "rendered": [
+              {
+                "name": "Storefront",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"light\" → \"dark\""
+                ]
+              },
+              {
+                "name": "ProductGrid",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "layout changed (new reference, same value)",
+                  "context Context changed"
+                ]
+              },
+              {
+                "name": "ProductCard",
+                "count": 40,
+                "memo": true,
+                "notes": [
+                  "context Context changed"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "trigger": "input",
+            "renderMs": 6.8,
+            "renderMsRuns": [
+              7,
+              6.8,
+              6.6
+            ],
+            "rendered": [
+              {
+                "name": "Storefront",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"dark\" → \"light\""
+                ]
+              },
+              {
+                "name": "ProductGrid",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "layout changed (new reference, same value)",
+                  "context Context changed"
+                ]
+              },
+              {
+                "name": "ProductCard",
+                "count": 40,
+                "memo": true,
+                "notes": [
+                  "context Context changed"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "trigger": "input",
+            "renderMs": 6.8,
+            "renderMsRuns": [
+              6.9,
+              6.8,
+              6.6
+            ],
+            "rendered": [
+              {
+                "name": "Storefront",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"light\" → \"dark\""
+                ]
+              },
+              {
+                "name": "ProductGrid",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "layout changed (new reference, same value)",
+                  "context Context changed"
+                ]
+              },
+              {
+                "name": "ProductCard",
+                "count": 40,
+                "memo": true,
+                "notes": [
+                  "context Context changed"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 4,
+            "trigger": "input",
+            "renderMs": 6.9,
+            "renderMsRuns": [
+              6.9,
+              6.8,
+              7.1
+            ],
+            "rendered": [
+              {
+                "name": "Storefront",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"dark\" → \"light\""
+                ]
+              },
+              {
+                "name": "ProductGrid",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "layout changed (new reference, same value)",
+                  "context Context changed"
+                ]
+              },
+              {
+                "name": "ProductCard",
+                "count": 40,
+                "memo": true,
+                "notes": [
+                  "context Context changed"
+                ]
+              }
+            ]
+          }
+        ],
+        "rendersAfterMount": {
+          "Storefront": 4,
+          "PromoBanner": 0,
+          "ProductGrid": 4,
+          "ProductCard": 160
+        },
+        "timings": {
+          "mountMs": 9.8,
+          "inputCommits": 4,
+          "inputMedianMs": 6.85,
+          "followUpCommits": 0,
+          "laterCommits": 0,
+          "frameBudgetMs": 16.7
+        },
+        "stubs": [],
+        "timerResolutionMs": 0.1,
+        "pageErrors": []
+      },
+      "steps": [
+        {
+          "index": 0,
+          "commits": [
+            1
+          ],
+          "renderMs": 7.3,
+          "renders": 42
+        },
+        {
+          "index": 1,
+          "commits": [
+            2
+          ],
+          "renderMs": 6.8,
+          "renders": 42
+        },
+        {
+          "index": 2,
+          "commits": [
+            3
+          ],
+          "renderMs": 6.8,
+          "renders": 42
+        },
+        {
+          "index": 3,
+          "commits": [
+            4
+          ],
+          "renderMs": 6.9,
+          "renders": 42
+        }
+      ]
+    },
+    "findings": [],
+    "keystroke": {
+      "unit": "click",
+      "label": "Clicking 4 times",
+      "caption": "clicked 4 times in Storefront",
+      "steps": 4,
+      "msPerStep": 6.85,
+      "rendersPerStep": 42,
+      "frameBudgetMs": 16.7,
+      "overBudget": false,
+      "wastedMsPerStep": 0,
+      "restMsPerStep": 6.85,
+      "headline": "Nothing to fix: each click takes 6.9 ms.",
+      "subline": "Each click takes 6.9 ms. A click feels instant when an update fits in one screen refresh (about 16.7 ms), so this should feel smooth.",
+      "tree": [
+        {
+          "name": "Storefront",
+          "depth": 0,
+          "label": "state-origin",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 6.9
+        },
+        {
+          "name": "ProductGrid",
+          "depth": 1,
+          "label": "needed",
+          "memo": true,
+          "count": 1,
+          "below": {},
+          "ms": 6.9
+        },
+        {
+          "name": "ProductCard",
+          "depth": 2,
+          "label": "needed",
+          "memo": true,
+          "count": 40,
+          "below": {},
+          "ms": 6.8
+        },
+        {
+          "name": "PromoBanner",
+          "depth": 1,
+          "label": "skipped",
+          "memo": true,
+          "count": 1,
+          "below": {},
+          "ms": 0
+        }
+      ]
+    }
+  }
+}
