@@ -64,8 +64,23 @@ describe('analyzer golden test', () => {
     for (const [entry, want] of Object.entries(section.variants)) {
       it(`${name}/${entry}: findings match EXPECTED.md`, async () => {
         const input = InspectRenderInputSchema.parse({ ...test, files, entry });
-        const result = await recordRender(input);
-        if (!result.ok) throw new Error(`Recording failed: ${JSON.stringify(result.error, null, 2)}`);
+        // `commit` entries below are indexes into EXPECTED.md's commit table, so they only mean
+        // something when run 1 recorded that many updates. On React 18 one run has occasionally
+        // recorded one more update than EXPECTED.md lists (cause not investigated yet): record once
+        // more, then fail loudly rather than skip those checks.
+        const wantCount = fixtureExpected(name).variants?.[entry]?.commitCount;
+        const record = async () => {
+          const r = await recordRender(input);
+          if (!r.ok) throw new Error(`Recording failed: ${JSON.stringify(r.error, null, 2)}`);
+          return r;
+        };
+        let result = await record();
+        if (result.traces[0]!.commits.length !== wantCount) {
+          console.log(`${name}/${entry}: run 1 recorded ${result.traces[0]!.commits.length} updates, EXPECTED.md has ${wantCount}; recording again`);
+          result = await record();
+        }
+        const n = result.traces[0]!.commits.length;
+        expect(n === wantCount, `run 1 recorded ${n} updates, EXPECTED.md has ${wantCount}: recorder flake`).toBe(true);
         if (process.env.RT_SAVE_TRACES) {
           await writeFile(traceFile(name, entry), `${JSON.stringify({ summary: result.summary, traces: result.traces.slice(0, 1) })}\n`);
         }
@@ -76,13 +91,7 @@ describe('analyzer golden test', () => {
         );
         expect(analysis.allFindings.map(findingView)).toEqual(want.report.map((w) => expect.objectContaining(w)));
         expect(analysis.allFindings).toHaveLength(want.report.length);
-        // `commit` entries are indexes into EXPECTED.md's commit table. When run 1 recorded a different
-        // number of updates (an extra mount follow-up, seen on React 18), every later index moves, so
-        // they can't be checked; fixtures.golden.test.ts fails on that recording anyway.
-        const sameShape = result.traces[0]!.commits.length === fixtureExpected(name).variants?.[entry]?.commitCount;
-        if (!sameShape) console.log(`${name}/${entry}: run 1 recorded ${result.traces[0]!.commits.length} updates; commit-index checks skipped`);
         for (const m of want.mustNotReport) {
-          if (m.commit !== undefined && !sameShape) continue;
           expect(analysis.allFindings.filter((f) => matchesMustNot(f, m)), `must not report ${JSON.stringify(m)}`).toEqual([]);
         }
         if (want.report.length === 0) {
@@ -90,7 +99,7 @@ describe('analyzer golden test', () => {
           expect(analysis.findings).toEqual([]);
           expect(analysis.keystroke.headline).toMatch(/^Nothing to fix: each \w+ takes [\d.]+ ms\.$/);
           const text = formatAnalysis({ summary: result.summary, steps: analysis.steps, findings: analysis.allFindings, keystroke: analysis.keystroke, runId: 'r_golden' });
-          expect(text).toContain('No problem passed the thresholds');
+          expect(text).toContain('No main problem found: ');
         }
       });
     }
