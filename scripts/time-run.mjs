@@ -1,7 +1,8 @@
 // Where an inspect_render call spends its time: `node scripts/time-run.mjs [fixture ...] [--calls N]
 // [--mode cold|warm|both] [--json file] [--server path/to/server.js ...]`. Needs `npm run build`
 // first: it drives dist/server.js over stdio, the way Claude Desktop and Claude Code do, and reads
-// `run.timing` from each result.
+// the timing each result carries in `_meta` (under "<package name>/timing"; older builds put it in
+// structuredContent.run.timing).
 //   cold: a fresh server process per call (process start, first browser launch, first TypeScript load)
 //   warm: one server process for all calls; calls 2..N+1 are the warm path (call 1 is left out)
 // Several --server builds (e.g. a copy of an older dist/ kept inside the checkout, so it finds
@@ -16,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const TIMING_KEY = `${JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).name}/timing`;
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const i = args.indexOf(name);
@@ -85,8 +87,9 @@ function startServer(server, env) {
       const reply = await rpc('tools/call', { name: 'inspect_render', arguments: input });
       const clientMs = performance.now() - t;
       const output = reply.result?.structuredContent;
-      if (!output?.run?.timing) throw new Error(`no timing in the result: ${JSON.stringify(reply).slice(0, 2000)}`);
-      return { clientMs, timing: output.run.timing, summary: output.run.summary };
+      const timing = reply.result?._meta?.[TIMING_KEY] ?? output?.run?.timing;
+      if (!timing || !output?.run) throw new Error(`no timing in the result: ${JSON.stringify(reply).slice(0, 2000)}`);
+      return { clientMs, timing, summary: output.run.summary };
     },
     async stop() {
       child.stdin.end(); // the way a host closes a stdio server
@@ -105,6 +108,7 @@ function sample(clientMs, timing, summary, startMs) {
   return {
     processStartMs: startMs,
     clientMs,
+    startAndCallMs: startMs + clientMs,
     queueMs: timing.queueMs ?? 0, // older builds had no queue
     bundleMs: timing.bundleMs,
     instrumentationMs: timing.instrumentationMs,
@@ -189,9 +193,11 @@ const ROWS = [
   ['storeMs', 'store write'],
   ['otherMs', 'not in a phase above'],
   ['totalMs', 'server total'],
-  ['clientMs', 'call as the client sees it'],
+  ['clientMs', 'tools/call round trip (no process start)'],
+  ['startAndCallMs', 'process start + round trip (cold only)'],
 ];
 
+const RANGED = new Set(['totalMs', 'clientMs', 'startAndCallMs']);
 const fmt = (n) => (n >= 100 ? Math.round(n).toString() : n.toFixed(1));
 const results = {};
 const runsDir = mkdtempSync(path.join(os.tmpdir(), 'rendertrail-time-'));
@@ -206,7 +212,13 @@ try {
     console.log(`| phase | ${modes.join(' | ')} |`);
     console.log(`|---|${modes.map(() => '---:').join('|')}|`);
     for (const [key, label] of ROWS) {
-      const cells = modes.map((m) => (key === 'processStartMs' && m.startsWith('warm') ? '–' : fmt(median(results[name][m].map((s) => s[key])))));
+      const cells = modes.map((m) => {
+        if ((key === 'processStartMs' || key === 'startAndCallMs') && m.startsWith('warm')) return '–';
+        const values = results[name][m].map((s) => s[key]);
+        const cell = fmt(median(values));
+        // Totals with their range: medians of phases don't add up to the median total.
+        return RANGED.has(key) ? `${cell} (${fmt(Math.min(...values))}–${fmt(Math.max(...values))})` : cell;
+      });
       console.log(`| ${label} | ${cells.join(' | ')} |`);
     }
     for (const m of modes) {
