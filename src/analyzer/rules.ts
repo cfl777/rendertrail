@@ -22,6 +22,7 @@ import {
   confirmStateInEffect,
   dependenciesOf,
   findJsxProp,
+  isFunctionValue,
   lineOf,
   snippetOf,
   textOf,
@@ -157,6 +158,17 @@ interface PropSource {
   passedInto: string | null;
   /** The variable the suggested fix introduces, when the value was inline. */
   newVariable: string | null;
+  /** An object or array that uses nothing from the component: the module constant to move it to. */
+  hoist: { name: string; code: string } | null;
+  /** A function declared with `function name() {}` in the component, passed by name: where it's declared. */
+  declaredAt: SourceLocation | null;
+  /** For declaredAt: what the function reads from the component (its dependency list). */
+  declaredDeps: string[];
+}
+
+/** `columns` → `COLUMNS`, `sortOrder` → `SORT_ORDER`. */
+function constantName(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
 }
 
 /** Inline values first: they're the ones made anew on every render. Memoized ones last. */
@@ -190,7 +202,8 @@ function propSource(ctx: RuleContext, component: string, prop: string, type: str
   const hook: FixKind = isFunction ? 'useCallback' : 'useMemo';
   const { best, rest } = pick(findJsxProp(ctx.files, component, prop), rendered);
   const others = rest.map(attributeLocation);
-  if (!best) return isFunction ? null : { location: null, others, fixKind: hook, fixCode: null, variable: null, via: [], passedInto: null, newVariable: null };
+  const none = { hoist: null, declaredAt: null, declaredDeps: [] };
+  if (!best) return isFunction ? null : { location: null, others, fixKind: hook, fixCode: null, variable: null, via: [], passedInto: null, newVariable: null, ...none };
 
   // Follow a value that only passes through props up to where it's created.
   let origin = best;
@@ -207,7 +220,7 @@ function propSource(ctx: RuleContext, component: string, prop: string, type: str
   if (isFunction && !(resolved && (origin.valueKind === 'inline-function' || origin.valueKind === 'local-function'))) return null;
   if (!resolved) {
     const into = via.at(-1) ?? origin.enclosing[0] ?? component;
-    return { location: attributeLocation(best), others, fixKind: hook, fixCode: null, variable: null, via, passedInto: into, newVariable: null };
+    return { location: attributeLocation(best), others, fixKind: hook, fixCode: null, variable: null, via, passedInto: into, newVariable: null, ...none };
   }
 
   const local = origin.variable !== null && origin.valueExpression !== null && origin.valueKind.startsWith('local-');
@@ -217,24 +230,85 @@ function propSource(ctx: RuleContext, component: string, prop: string, type: str
     line: lineOf(origin.file, where),
     snippet: local ? `${origin.variable} = ${snippetOf(origin.file, where, 80)}` : origin.snippet,
   };
-  const base = { location, others, variable: origin.variable, via, passedInto: null, newVariable: null };
+  const base = { location, others, variable: origin.variable, via, passedInto: null, newVariable: null, ...none };
   if (origin.valueKind === 'memoized') return { ...base, fixKind: 'stabilize-deps', fixCode: null };
 
   let fixCode: string | null = null;
   let newVariable: string | null = null;
+  let hoist: PropSource['hoist'] = null;
+  let declaredAt: SourceLocation | null = null;
+  let declaredDeps: string[] = [];
   const expr = origin.valueExpression;
+  const name = origin.variable ?? origin.attribute.name.getText(origin.file.source);
   if (expr && origin.valueKind !== 'local-function' && origin.valueKind !== 'other') {
     const body = textOf(origin.file, expr);
     if (body.length <= 100) {
-      const deps = dependenciesOf(expr).join(', ');
-      const name = origin.variable ?? origin.attribute.name.getText(origin.file.source);
+      const deps = dependenciesOf(expr);
       if (!origin.variable) newVariable = name;
       fixCode = isFunction
-        ? `const ${name} = useCallback(${body}, [${deps}]);`
-        : `const ${name} = useMemo(() => ${body.startsWith('{') ? `(${body})` : body}, [${deps}]);`;
+        ? `const ${name} = useCallback(${body}, [${deps.join(', ')}]);`
+        : `const ${name} = useMemo(() => ${body.startsWith('{') ? `(${body})` : body}, [${deps.join(', ')}]);`;
+      // A literal that reads nothing from the component can live outside it: simpler than useMemo.
+      if (!isFunction && dependenciesOf(expr, true).length === 0) hoist = { name: constantName(name), code: `const ${constantName(name)} = ${body};` };
     }
   }
-  return { ...base, fixKind: hook, fixCode, newVariable };
+  const decl = origin.declaration;
+  if (decl && origin.valueKind === 'local-function') {
+    const params = decl.parameters.map((p) => textOf(origin.file, p)).join(', ');
+    declaredAt = { file: origin.file.path, line: lineOf(origin.file, decl), snippet: `function ${name}(${params}) { … }` };
+    declaredDeps = dependenciesOf(decl);
+    fixCode = `const ${name} = useCallback((${params}) => { … }, [${declaredDeps.join(', ')}]);`;
+  }
+  return { ...base, fixKind: hook, fixCode, newVariable, hoist, declaredAt, declaredDeps };
+}
+
+/** What one wasted update looks like for a rule 1 finding (medians over the updates it happened in). */
+export interface WasteShape {
+  /** Instances of the memo component that re-rendered for nothing in one update (100 list rows: 100). */
+  instances: number;
+  /** Components below them that re-rendered with them in one update: `{ ResultRow: 200 }`. */
+  below: Record<string, number>;
+  /** Updates per affected step it happened in (2 when a follow-up update re-renders it again). */
+  updatesPerStep: number;
+}
+
+/** The top-level memo-break renders of `component` in a commit (a nested instance is inside its ancestor's time). */
+function wastedInstances(commit: RecordedCommit, component: string): number[] {
+  const found: number[] = [];
+  commit.rendered.forEach((r, ri) => {
+    if (r.name === component && isMemoBreak(r) && !found.some((a) => isBelow(commit, ri, a))) found.push(ri);
+  });
+  return found;
+}
+
+export function wasteShape(trace: RecordedTrace, steps: readonly InteractionStep[], component: string, commits: readonly number[]): WasteShape {
+  const stepIndex = stepOfCommit(steps);
+  const unique = [...new Set(commits)];
+  const perCommit = unique.map((ci) => {
+    const commit = trace.commits[ci];
+    const below: Record<string, number> = {};
+    const roots = commit ? wastedInstances(commit, component) : [];
+    for (const ri of roots) for (const d of descendantsOf(commit!, ri)) below[d.name] = (below[d.name] ?? 0) + 1;
+    return { instances: roots.length, below };
+  });
+  const names = [...new Set(perCommit.flatMap((c) => Object.keys(c.below)))];
+  const updates = new Map<number, number>();
+  for (const ci of unique) {
+    const s = stepIndex.get(ci);
+    if (s !== undefined) updates.set(s, (updates.get(s) ?? 0) + 1);
+  }
+  return {
+    instances: median(perCommit.map((c) => c.instances)),
+    below: Object.fromEntries(names.map((name) => [name, median(perCommit.map((c) => c.below[name] ?? 0))])),
+    updatesPerStep: median([...updates.values()]),
+  };
+}
+
+/** "twice", "3 times"; empty for once. */
+export function repeatText(updates: number): string {
+  const n = Math.round(updates);
+  if (n <= 1) return '';
+  return n === 2 ? 'twice' : `${n} times`;
 }
 
 export function unstablePropCandidates(ctx: RuleContext): Candidate[] {
@@ -281,14 +355,20 @@ export function unstablePropCandidates(ctx: RuleContext): Candidate[] {
     const below = Object.fromEntries(names.map((name) => [name, median(perAffectedStep(group.hits, (h) => h.below[name] ?? 0))]));
     const stepsAffected = new Set(group.hits.map((h) => h.step)).size;
     const everyStep = stepsAffected === n;
+    const commits = [...new Set(group.hits.map((h) => h.commit))];
+    // The texts describe one update (as the card's tree does) and say how often it repeats per step.
+    const shape = wasteShape(ctx.trace, ctx.steps, component, commits);
+    const instances = Math.round(shape.instances);
 
     const thing = newThing(prop.type);
     const where = source.location ? `${source.location.file}:${source.location.line}` : null;
-    const belowText = Object.entries(below)
+    const belowText = Object.entries(shape.below)
       .filter(([, k]) => k > 0)
       .map(([name, k]) => `${round(k)} ${name}`)
       .join(', ');
-    const how = everyStep ? `on every ${ctx.unit.one}` : `on some ${ctx.unit.many}`;
+    const repeat = repeatText(shape.updatesPerStep);
+    const how = `${repeat ? `${repeat} ` : ''}${everyStep ? `on every ${ctx.unit.one}` : `on some ${ctx.unit.many}`}`;
+    const subject = instances > 1 ? `${instances} × ${component} (memo) re-render` : `${component} (memo) re-renders`;
     const otherText = otherProps.length ? ` (also ${otherProps.map((o) => `\`${o}\``).join(', ')})` : '';
     const viaText = source.via.length && !source.passedInto ? ` and passed down through ${source.via.join(', ')}` : '';
     const alsoText = source.others.length ? ` It is also passed at ${source.others.map((o) => `${o.file}:${o.line}`).join(', ')}.` : '';
@@ -305,11 +385,27 @@ export function unstablePropCandidates(ctx: RuleContext): Candidate[] {
       createdText = where ? `, created at ${where}${viaText}` : '';
       fixShort = `it's already memoized, but a dependency changes on every render; make that dependency stable too`;
       fixLong = `\`${prop.name}\` is already wrapped in useMemo or useCallback, but one of its dependencies changes on every render. Make that dependency stable too, so ${component} gets the same ${thing} until its contents change.`;
-    } else {
+    } else if (source.hoist) {
       createdText = where ? `, created at ${where}${viaText}` : '';
-      fixShort = `wrap it in ${hookName}`;
+      fixShort = `move it out of the component, since it uses nothing from it, or wrap it in ${hookName}`;
+      fixLong =
+        `It uses nothing from the component, so move it outside, to the top of the file: \`${source.hoist.code}\`, then pass \`${prop.name}={${source.hoist.name}}\`. ` +
+        `${component} then gets the same ${thing} on every render.${source.fixCode ? ` Wrapping it in ${hookName} also works: \`${source.fixCode}\`.` : ''}`;
+    } else {
+      const declared = source.declaredAt ? ` (declared at ${source.declaredAt.file}:${source.declaredAt.line})` : '';
+      createdText = !where
+        ? ''
+        : source.declaredAt
+          ? `, passed at ${where}${viaText}; \`${source.variable}\` is declared at ${source.declaredAt.file}:${source.declaredAt.line}`
+          : `, created at ${where}${viaText}`;
+      fixShort = source.declaredAt ? `wrap \`${source.variable}\` in ${hookName}` : `wrap it in ${hookName}`;
       const passHint = source.fixCode && source.newVariable ? `, then pass \`${source.newVariable}={${source.newVariable}}\`` : '';
-      fixLong = `Wrap it in ${hookName} so ${component} gets the same ${thing} until its contents change${source.fixCode ? `: \`${source.fixCode}\`${passHint}` : ''}.`;
+      const depsNote = source.declaredDeps.length
+        ? `The dependency list holds what it reads from the component: ${source.declaredDeps.map((d) => `\`${d}\``).join(', ')}.`
+        : 'The dependency list can stay empty: it reads nothing from the component except state setters, which never change.';
+      fixLong = source.declaredAt
+        ? `Wrap \`${source.variable}\`${declared} in ${hookName} so ${component} gets the same ${thing} until its dependencies change: \`${source.fixCode}\`, keeping its body. ${depsNote}`
+        : `Wrap it in ${hookName} so ${component} gets the same ${thing} until its contents change${source.fixCode ? `: \`${source.fixCode}\`${passHint}` : ''}.`;
     }
 
     candidates.push({
@@ -321,7 +417,7 @@ export function unstablePropCandidates(ctx: RuleContext): Candidate[] {
       ...(source.others.length ? { otherLocations: source.others } : {}),
       stepsAffected,
       steps: n,
-      commits: group.hits.map((h) => h.commit),
+      commits,
       msPerStep: ms.mean,
       msPerAffectedStep: ms.affected,
       rendersPerStep: renders.mean,
@@ -330,13 +426,14 @@ export function unstablePropCandidates(ctx: RuleContext): Candidate[] {
       fix: { kind: source.fixKind, compilerFixes: true },
       texts: {
         summary:
-          `${component} (memo) re-renders${belowText ? ` with ${belowText} below it` : ''} ${how}: prop \`${prop.name}\`${otherText} is a new ${thing} each render with the same value` +
+          `${subject}${belowText ? ` with ${belowText} below ${instances > 1 ? 'them' : 'it'}` : ''} ${how}: prop \`${prop.name}\`${otherText} is a new ${thing} each render with the same value` +
           `${createdText}. Wasted: ${costText(ms.affected, stepsAffected, n, ctx.unit)}. Fix: ${fixShort} (React Compiler would do this automatically).${alsoText}`,
         why:
           `memo only skips a render when every prop is the same object as last time. \`${prop.name}\` looks the same, but it's a new ${thing} on every render, ` +
           `so ${component}${belowText ? ` and everything below it` : ''} re-renders for nothing.`,
         line: where
-          ? `\`${source.location!.snippet}\` at ${where}${source.passedInto ? ` (it comes from ${source.passedInto}'s props)` : ''}.${alsoText}`
+          ? `\`${source.location!.snippet}\` at ${where}${source.passedInto ? ` (it comes from ${source.passedInto}'s props)` : ''}.` +
+            `${source.declaredAt ? ` \`${source.variable}\` is declared at ${source.declaredAt.file}:${source.declaredAt.line}: \`${source.declaredAt.snippet}\`.` : ''}${alsoText}`
           : `The line that passes \`${prop.name}\` to ${component} wasn't found in the files.`,
         fix: `${fixLong} React Compiler would do this automatically.`,
       },
@@ -383,23 +480,24 @@ export function stateInEffectCandidates(ctx: RuleContext): Candidate[] {
   for (const { component, hook, perCommit } of occurrences.values()) {
     const source = confirmStateInEffect(ctx.files, component, hook);
     if (!source) continue;
-    const hits = [...perCommit.keys()];
-    const inStepHits: Hit[] = hits
+    const inStepHits: Hit[] = [...perCommit.keys()]
       .filter((c) => stepIndex.has(c))
       .map((c) => ({ commit: c, step: stepIndex.get(c)!, ms: round(perCommit.get(c)!.ms), renders: perCommit.get(c)!.renders, below: {} }));
     const stepsAffected = new Set(inStepHits.map((h) => h.step)).size;
     const extra = n ? inStepHits.length / n : 0;
     const ms = costs(inStepHits, n, (h) => h.ms);
     const renders = costs(inStepHits, n, (h) => h.renders);
-    const location: SourceLocation = { file: source.file.path, line: lineOf(source.file, source.call), snippet: snippetOf(source.file, source.call) };
+    // The finding points at the effect (what the fix removes), and names the setter call's line.
+    const location: SourceLocation = { file: source.file.path, line: lineOf(source.file, source.effectCall), snippet: snippetOf(source.file, source.effectCall, 120) };
     const where = `${location.file}:${location.line}`;
+    const setterLine = lineOf(source.file, source.call);
+    const setterText = setterLine !== location.line ? ` (it calls \`${source.call.expression.getText(source.file.source)}\` on line ${setterLine})` : '';
     const inHook = source.owner !== component ? ` (in ${source.owner})` : '';
     const isReducer = source.hook === 'useReducer';
     const arg = source.call.arguments.length === 1 ? source.call.arguments[0]! : null;
-    const argText = arg ? arg.getText(source.file.source) : '';
-    const plainArg = arg !== null && !argText.includes('=>') && !/^function\b/.test(argText);
-    const code = !isReducer && source.state && arg && plainArg ? `const ${source.state} = ${textOf(source.file, arg)};` : null;
-    const stateWord = source.state ? `\`${source.state}\`` : 'the value';
+    // Only the updater form, `setX((prev) => …)`, has no plain value to compute; a value that merely contains an arrow does.
+    const code = !isReducer && source.state && arg && !isFunctionValue(arg) ? `const ${source.state} = ${textOf(source.file, arg)};` : null;
+    const stateWord =source.state ? `\`${source.state}\`` : 'the value';
     const id = `state-in-effect:${component}:${source.setter}`;
     const extraText =
       stepsAffected === n
@@ -422,7 +520,8 @@ export function stateInEffectCandidates(ctx: RuleContext): Candidate[] {
       location,
       stepsAffected,
       steps: n,
-      commits: hits,
+      // Updates inside a step only: mount follow-ups aren't part of the interaction (nor of the cost).
+      commits: inStepHits.map((h) => h.commit),
       msPerStep: ms.mean,
       msPerAffectedStep: ms.affected,
       rendersPerStep: renders.mean,
@@ -434,7 +533,7 @@ export function stateInEffectCandidates(ctx: RuleContext): Candidate[] {
         why:
           `${component} ${isReducer ? 'updates its reducer state' : 'copies a value into state'} inside ${source.effect}. React renders ${component}, runs the effect, ` +
           `and then has to render it again with the new ${source.state ?? 'state'}: two updates where one would do.`,
-        line: `\`${location.snippet}\` at ${where}${inHook}.`,
+        line: `\`${location.snippet}\` at ${where}${setterText}${inHook}.`,
         fix: `${fixLong} React Compiler doesn't fix this one.`,
       },
     };

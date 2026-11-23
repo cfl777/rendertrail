@@ -54,7 +54,10 @@ function quote(text: string): string {
 function captionFor(acting: readonly Step[], component: string): string {
   const typed = acting.flatMap((s) => (s.action === 'type' ? [s.text] : []));
   if (acting.length > 0 && typed.length === acting.length) return `typed ${typed.map(quote).join(', ')} into ${component}`;
-  if (acting.length > 0 && acting.every((s) => s.action === 'click')) return `clicked ${acting.length} ${acting.length === 1 ? 'time' : 'times'} in ${component}`;
+  const clicks = acting.filter((s) => s.action === 'click').length;
+  const clicked = `clicked ${clicks} ${clicks === 1 ? 'time' : 'times'}`;
+  if (acting.length > 0 && clicks === acting.length) return `${clicked} in ${component}`;
+  if (typed.length > 0 && typed.length + clicks === acting.length) return `typed ${typed.map(quote).join(', ')} and ${clicked} in ${component}`;
   return `played ${acting.length} ${acting.length === 1 ? 'action' : 'actions'} in ${component}`;
 }
 

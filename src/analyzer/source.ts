@@ -127,6 +127,13 @@ export function snippetOf(file: ParsedFile, node: ts.Node, max = 90): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+/** True for an arrow function or function expression (`setX((prev) => …)` passes one: the updater form). */
+export function isFunctionValue(node: ts.Node): boolean {
+  let e = node;
+  while (T.isParenthesizedExpression(e) || T.isAsExpression(e)) e = e.expression;
+  return T.isArrowFunction(e) || T.isFunctionExpression(e);
+}
+
 export function textOf(file: ParsedFile, node: ts.Node): string {
   return node.getText(file.source).replace(/\s+/g, ' ').trim();
 }
@@ -433,6 +440,8 @@ export interface SyncSetterCall {
   /** The setter call inside the effect body. */
   call: ts.CallExpression;
   effect: string;
+  /** The `useEffect(…)` call around it. */
+  effectCall: ts.CallExpression;
   file: ParsedFile;
   owner: string;
 }
@@ -448,7 +457,7 @@ export function syncSetterCallsInEffects(file: ParsedFile, owner: FunctionLike, 
     if (!callback || !(T.isArrowFunction(callback) || T.isFunctionExpression(callback))) return;
     const check = (inner: ts.Node): void => {
       if (T.isCallExpression(inner) && T.isIdentifier(inner.expression) && setters.has(inner.expression.text)) {
-        calls.push({ setter: inner.expression.text, call: inner, effect, file, owner: functionName(owner) ?? 'anonymous' });
+        calls.push({ setter: inner.expression.text, call: inner, effect, effectCall: node, file, owner: functionName(owner) ?? 'anonymous' });
       }
     };
     walkBody(callback, check);
@@ -474,6 +483,8 @@ export interface StateInEffectSource {
   file: ParsedFile;
   call: ts.CallExpression;
   effect: string;
+  /** The `useEffect(…)` call that contains the setter call: the line the finding points at. */
+  effectCall: ts.CallExpression;
   /** True when the hook index was matched to its useState; false when the only candidate was used. */
   matchedByIndex: boolean;
 }
@@ -494,6 +505,7 @@ export function confirmStateInEffect(files: readonly ParsedFile[], component: st
       file: call.file,
       call: call.call,
       effect: call.effect,
+      effectCall: call.effectCall,
       matchedByIndex,
     });
     const byIndex = hooks.find((h) => h.index === hookIndex);
@@ -539,6 +551,8 @@ export interface JsxPropMatch {
   variable: string | null;
   /** valueKind 'prop': the component whose props it comes from, and the prop's name there. */
   fromProp: { component: string; prop: string } | null;
+  /** valueKind 'local-function' declared with `function name() {}` in the component: that declaration. */
+  declaration: ts.FunctionDeclaration | null;
 }
 
 function unwrap(expr: ts.Expression): ts.Expression {
@@ -571,10 +585,10 @@ function propNameOf(param: ts.ParameterDeclaration, local: string): string | nul
   return null;
 }
 
-type Classified = Pick<JsxPropMatch, 'valueKind' | 'valueExpression' | 'variable' | 'fromProp'>;
+type Classified = Pick<JsxPropMatch, 'valueKind' | 'valueExpression' | 'variable' | 'fromProp' | 'declaration'>;
 
 function classify(attribute: ts.JsxAttribute): Classified {
-  const none = { valueExpression: null, variable: null, fromProp: null };
+  const none = { valueExpression: null, variable: null, fromProp: null, declaration: null };
   const init = attribute.initializer;
   const expr = init && T.isJsxExpression(init) ? init.expression : undefined;
   if (!expr) return { valueKind: 'other', ...none };
@@ -604,7 +618,7 @@ function classify(attribute: ts.JsxAttribute): Classified {
       const prop = propNameOf(param, name);
       return { ...none, valueKind: 'prop', variable: name, fromProp: component && prop ? { component, prop } : null };
     }
-    const found: { value: { kind: PropValueKind; expression: ts.Expression | null } | null } = { value: null };
+    const found: { value: { kind: PropValueKind; expression: ts.Expression | null; declaration?: ts.FunctionDeclaration } | null } = { value: null };
     walkBody(scope, (node) => {
       if (found.value) return;
       if (T.isVariableDeclaration(node) && T.isIdentifier(node.name) && node.name.text === name && node.initializer) {
@@ -615,9 +629,9 @@ function classify(attribute: ts.JsxAttribute): Classified {
     const body = scope.body;
     if (!found.value && body && T.isBlock(body)) {
       const decl = body.statements.find((s): s is ts.FunctionDeclaration => T.isFunctionDeclaration(s) && s.name?.text === name);
-      if (decl) found.value = { kind: 'local-function', expression: null };
+      if (decl) found.value = { kind: 'local-function', expression: null, declaration: decl };
     }
-    if (found.value) return { valueKind: found.value.kind, valueExpression: found.value.expression, variable: name, fromProp: null };
+    if (found.value) return { valueKind: found.value.kind, valueExpression: found.value.expression, variable: name, fromProp: null, declaration: found.value.declaration ?? null };
   }
   return { ...none, valueKind: 'other', variable: name }; // module level, or not found
 }
@@ -660,9 +674,10 @@ export function findJsxProp(files: readonly ParsedFile[], component: string, pro
 
 /**
  * Dependencies for a useMemo/useCallback around `expression`: the names it reads that are
- * declared in the component (its props and locals), minus state setters, in order of first use.
+ * declared in the component (its props and locals), minus state setters (unless `keepSetters`: then
+ * an empty list means it reads nothing from the component), in order of first use.
  */
-export function dependenciesOf(expression: ts.Expression): string[] {
+export function dependenciesOf(expression: ts.Expression | ts.FunctionDeclaration, keepSetters = false): string[] {
   const component = innermostNamedFunction(expression);
   if (!component) return [];
   const locals = new Set<string>(component.parameters.flatMap((p) => bindingNames(p.name)));
@@ -687,7 +702,7 @@ export function dependenciesOf(expression: ts.Expression): string[] {
   visitDecl(expression);
   const deps: string[] = [];
   const add = (name: string): void => {
-    if (locals.has(name) && !setters.has(name) && !own.has(name) && !deps.includes(name)) deps.push(name);
+    if (locals.has(name) && (keepSetters || !setters.has(name)) && !own.has(name) && !deps.includes(name)) deps.push(name);
   };
   const visit = (node: ts.Node): void => {
     if (T.isShorthandPropertyAssignment(node)) {
