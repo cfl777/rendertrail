@@ -9,8 +9,9 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { warmBrowser } from '../../src/recorder/browser.js';
 import { recordRender } from '../../src/recorder/index.js';
 import { InspectRenderInputSchema } from '../../src/shared/types.js';
 
@@ -67,6 +68,9 @@ async function loadFixture(name: string) {
 function countsByName(rendered: { name: string; count: number }[]): Record<string, number> {
   return Object.fromEntries(rendered.map((g) => [g.name, g.count]));
 }
+
+// The warm browser stays up after the file's last call; close it rather than leave it to the worker's exit.
+afterAll(() => warmBrowser.close());
 
 const names = await fixtureNames();
 

@@ -27,7 +27,7 @@ export function createServer(): McpServer {
       inputSchema: InspectRenderInputShape,
       _meta: { ui: { resourceUri: BRAND.cardResourceUri } },
     },
-    (input) => inspectRender(input),
+    (input, ctx) => inspectRender(input, undefined, ctx.mcpReq.signal),
   );
 
   registerAppResource(

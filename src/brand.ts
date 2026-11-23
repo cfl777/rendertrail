@@ -17,4 +17,6 @@ export const BRAND = {
   runsDirEnv: 'RENDERTRAIL_RUNS_DIR',
   /** Environment variable that turns the opt-in anonymous counts on (1) or off (0). */
   telemetryEnv: 'RENDERTRAIL_TELEMETRY',
+  /** Key in an inspect_render result's `_meta` that holds where the call's time went (scripts/time-run.mjs). */
+  timingMetaKey: 'rendertrail/timing',
 } as const;

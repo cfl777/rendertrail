@@ -13,6 +13,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { closeWarmBrowser } from '../recorder/browser.js';
 import { createServer } from './server.js';
 
+/** How long a signalled shutdown waits for the browser to close before exiting anyway. */
+const SHUTDOWN_GRACE_MS = 3_000;
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 /**
@@ -25,6 +27,8 @@ function closeBrowserOnShutdown(): void {
   const stop = (code: number) => (): void => {
     if (stopping) return;
     stopping = true;
+    // Exit even if closing stalls: these handlers replace Node's default exit on a signal.
+    setTimeout(() => process.exit(code), SHUTDOWN_GRACE_MS).unref();
     void closeWarmBrowser().finally(() => process.exit(code));
   };
   process.once('SIGINT', stop(130));

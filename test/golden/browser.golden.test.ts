@@ -8,7 +8,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Browser } from 'playwright-core';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { BRAND } from '../../src/brand.js';
 import { WarmBrowser, warmBrowser } from '../../src/recorder/browser.js';
 import { recordRender } from '../../src/recorder/index.js';
 import { InspectRenderInputSchema } from '../../src/shared/types.js';
@@ -108,6 +109,9 @@ async function processTypes(browser: Browser): Promise<string[]> {
   return (await processInfo(browser)).map((p) => p.type);
 }
 
+// The warm browser stays up after a file's last call; close it rather than leave it to the worker's exit.
+afterAll(() => warmBrowser.close());
+
 describe('warm browser', () => {
   it('reuses the browser for the next call, with the same counts', async () => {
     await warmBrowser.close();
@@ -172,16 +176,36 @@ describe('warm browser', () => {
       ],
     });
     const failed = await recordRender(stuck);
-    expect(failed.ok).toBe(false);
-    // If the browser was kept, the looping page's process must be gone with its context.
-    const browser = warmBrowser.peek();
-    if (browser) {
-      const types = await processTypes(browser);
-      expect(types.filter((type) => type === 'renderer')).toEqual([]);
+    if (failed.ok) throw new Error('the stuck page recorded');
+    if (failed.error.kind === 'timeout') {
+      // A run that timed out never keeps its browser.
+      expect(warmBrowser.peek()).toBeUndefined();
+    } else {
+      // The click gave up first (a step error) and the browser was kept: the looping page's
+      // process must be gone with its context.
+      expect(failed.error.kind).toBe('step');
+      const browser = warmBrowser.peek();
+      if (!browser) throw new Error('the browser was not kept after a step error');
+      expect((await processTypes(browser)).filter((type) => type === 'renderer')).toEqual([]);
     }
     const next = await record();
     expect(next.summary.commitCount).toBe(3);
     expect(next.timing.runs.every((run) => run.totalMs < 5_000)).toBe(true);
+  });
+
+  it('a run past its time limit discards the browser', async () => {
+    await record();
+    const before = warmBrowser.peek();
+    if (!before) throw new Error('no warm browser');
+    const slow = InspectRenderInputSchema.parse({
+      ...counterInput,
+      steps: Array.from({ length: 5 }, () => ({ action: 'wait', ms: 5_000 })), // 25 s, past the 20 s limit
+    });
+    const result = await recordRender(slow);
+    expect(!result.ok && result.error.kind).toBe('timeout');
+    expect(warmBrowser.peek()).toBeUndefined();
+    expect(await waitUntil(() => !before.isConnected(), 10_000)).toBe(true);
+    expect((await record()).timing.browserReused).toBe(false);
   });
 
   it('closes an idle browser after the idle time', async () => {
@@ -196,11 +220,8 @@ describe('warm browser', () => {
 });
 
 describe.skipIf(!existsSync(SERVER))('no Chrome left behind by dist/server.js (needs `npm run build`)', () => {
-  async function serverWithWarmBrowser() {
-    const child = spawn(process.execPath, [SERVER], {
-      stdio: ['pipe', 'pipe', 'inherit'],
-      env: { ...process.env },
-    });
+  function startServer() {
+    const child = spawn(process.execPath, [SERVER], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env } });
     let buffer = '';
     const replies = new Map<number, (message: unknown) => void>();
     child.stdout.on('data', (chunk: Buffer) => {
@@ -220,29 +241,69 @@ describe.skipIf(!existsSync(SERVER))('no Chrome left behind by dist/server.js (n
         replies.set(id, resolve);
         child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
       });
-    await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'orphans', version: '0' } });
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
-    const call = (await rpc('tools/call', { name: 'inspect_render', arguments: counterInput })) as {
-      result?: { structuredContent?: { run?: { timing?: unknown } } };
-    };
-    expect(call.result?.structuredContent?.run?.timing).toBeDefined();
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-    const chrome = descendants(child.pid!);
+    const ready = rpc('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'orphans', version: '0' },
+    }).then(() => {
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+    });
+    const call = (args: object) =>
+      rpc('tools/call', { name: 'inspect_render', arguments: args }) as Promise<{
+        result?: { structuredContent?: { run?: unknown }; _meta?: Record<string, unknown> };
+      }>;
+    return { child, exited, ready, call };
+  }
+
+  async function serverWithWarmBrowser() {
+    const server = startServer();
+    await server.ready;
+    const reply = await server.call(counterInput);
+    expect(reply.result?.structuredContent?.run).toBeDefined();
+    expect(reply.result?._meta?.[BRAND.timingMetaKey]).toMatchObject({ browserReused: false });
+    const chrome = descendants(server.child.pid!);
     expect(chrome.length).toBeGreaterThan(0); // the warm browser and its helpers
-    return { child, exited, chrome };
+    return { ...server, chrome };
+  }
+
+  async function allGone(chrome: number[], ms: number): Promise<void> {
+    const ok = await waitUntil(() => chrome.every((pid) => !alive(pid)), ms);
+    expect(ok, `left: ${chrome.filter(alive).join(', ')}`).toBe(true);
   }
 
   it('closing stdin stops the server and its browser', async () => {
     const { child, exited, chrome } = await serverWithWarmBrowser();
     child.stdin.end();
     await exited;
-    expect(await waitUntil(() => chrome.every((pid) => !alive(pid)), 10_000), `left: ${chrome.filter(alive).join(', ')}`).toBe(true);
+    await allGone(chrome, 10_000);
+  });
+
+  it('closing stdin while a call is recording stops the server and its browser', async () => {
+    const server = startServer();
+    await server.ready;
+    void server.call({ ...counterInput, steps: [{ action: 'wait', ms: 4_000 }] });
+    // Chrome and its helpers are up and the first run has started.
+    expect(await waitUntil(() => descendants(server.child.pid!).length >= 3, 20_000)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const chrome = descendants(server.child.pid!);
+    server.child.stdin.end();
+    await server.exited;
+    await allGone(chrome, 10_000);
+  });
+
+  it.skipIf(process.platform === 'win32')('SIGTERM stops the server and its browser (POSIX)', async () => {
+    const { child, exited, chrome } = await serverWithWarmBrowser();
+    child.kill('SIGTERM');
+    await exited;
+    expect(child.exitCode).toBe(143);
+    await allGone(chrome, 10_000);
   });
 
   it('killing the server outright leaves no browser behind', async () => {
     const { child, exited, chrome } = await serverWithWarmBrowser();
     child.kill('SIGKILL');
     await exited;
-    expect(await waitUntil(() => chrome.every((pid) => !alive(pid)), 15_000), `left: ${chrome.filter(alive).join(', ')}`).toBe(true);
+    await allGone(chrome, 15_000);
   });
 });

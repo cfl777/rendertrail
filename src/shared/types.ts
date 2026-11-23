@@ -344,7 +344,10 @@ export interface RunTiming {
   totalMs: number;
 }
 
-/** Where one inspect_render call's wall-clock time went, in ms. Diagnostics only: never part of a finding. */
+/**
+ * Where one inspect_render call's wall-clock time went, in ms. Diagnostics only: it travels in the
+ * result's `_meta` under BRAND.timingMetaKey, never in structuredContent or the text.
+ */
 export interface CallTiming {
   /** Waiting for another call's recording to finish (recordings never overlap). */
   queueMs: number;
@@ -370,8 +373,6 @@ export interface RunInfo {
   createdAt: string;
   summary: TraceSummary;
   steps: InteractionStep[];
-  /** Optional, additive: where this call's time went. */
-  timing?: CallTiming;
 }
 
 /** structuredContent of inspect_render. */

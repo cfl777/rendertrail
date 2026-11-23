@@ -46,7 +46,7 @@ interface RtFiber {
 
 declare global {
   interface Window {
-    __RT__: RecordedTrace;
+    __RT__: RecordedTrace & { serialize(): string };
   }
 }
 
@@ -57,7 +57,14 @@ const PREVIEW_CHARS = 40;
 const MAX_COMMITS = 500;
 
 const RT: RecordedTrace = { commits: [], errors: [], truncated: false };
-window.__RT__ = RT;
+// The recorder reads the trace as one JSON string (much faster than Playwright copying it value by
+// value). JSON.stringify is captured now, before the recorded code runs, so code that patches it
+// can't change the trace. Every value in the trace is JSON-safe; the one difference from a value-by-
+// value copy would be a NaN or Infinity time (round(NaN)), which JSON turns into null.
+const stringify = JSON.stringify.bind(JSON);
+window.__RT__ = Object.assign(RT, {
+  serialize: (): string => stringify({ commits: RT.commits, errors: RT.errors, truncated: RT.truncated }),
+});
 
 // Count user input so each commit can be tagged as caused by input or not.
 // Capture phase on window runs before React's own listeners on the root.

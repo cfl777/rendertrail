@@ -3,13 +3,22 @@
  * pay for a browser launch. Every run still gets its own fresh browser context (run.ts), so nothing
  * carries over between runs or calls but the browser process itself.
  *
- * The browser is closed after LIMITS.browserIdleMs without a call, when it was used for a run that
- * timed out (a page stuck in a loop might not let go), and on shutdown (closeWarmBrowser). If it
- * crashed or was closed from outside, the next call launches a new one.
+ * The browser is closed after LIMITS.browserIdleMs without a call, when a run left it in doubt (a
+ * run that timed out, a page that wouldn't close), when a recording passed its deadline, and on
+ * shutdown (closeWarmBrowser). A browser that doesn't close within LIMITS.closeTimeoutMs is killed.
+ * If it crashed or was closed from outside, the next call launches a new one.
  */
 import type { Browser } from 'playwright-core';
 import { LIMITS } from './limits.js';
-import { launchBrowser, RecorderError, type LaunchedBrowser } from './run.js';
+import { launchBrowser, RecorderError, settlesWithin, type LaunchedBrowser } from './run.js';
+
+function killProcess(pid: number): void {
+  try {
+    process.kill(pid);
+  } catch {
+    // already gone
+  }
+}
 
 export interface Lease {
   launched: LaunchedBrowser;
@@ -27,10 +36,17 @@ export class WarmBrowser {
   private closing: Promise<void> = Promise.resolve();
   private stopped = false;
 
+  private readonly closeTimeoutMs: number;
+  private readonly kill: (pid: number) => void;
+
   constructor(
     private readonly launch: () => Promise<LaunchedBrowser> = launchBrowser,
     private readonly idleMs: number = LIMITS.browserIdleMs,
-  ) {}
+    options: { closeTimeoutMs?: number; kill?: (pid: number) => void } = {},
+  ) {
+    this.closeTimeoutMs = options.closeTimeoutMs ?? LIMITS.closeTimeoutMs;
+    this.kill = options.kill ?? killProcess;
+  }
 
   /** A connected browser: the warm one, or a new one. Pair every acquire with one release. */
   async acquire(): Promise<Lease> {
@@ -62,20 +78,26 @@ export class WarmBrowser {
     const launched = this.current;
     const launching = this.launching;
     this.current = undefined;
-    if (launched) this.closing = this.closing.then(() => launched.browser.close().catch(() => {}));
+    if (launched) this.closing = this.closing.then(() => this.shut(launched));
     if (launching) {
       // A launch in progress (shutdown during a call): close that browser too once it's up.
       this.closing = this.closing.then(() =>
         launching.then(
           (late) => {
             if (this.current === late) this.current = undefined;
-            return late.browser.close().catch(() => {});
+            return this.shut(late);
           },
           () => {},
         ),
       );
     }
     return this.closing;
+  }
+
+  /** Closes a browser; kills it when it doesn't close in time, so a stuck one can't hold up the next call. */
+  private async shut(launched: LaunchedBrowser): Promise<void> {
+    const closed = await settlesWithin(launched.browser.close(), this.closeTimeoutMs);
+    if (!closed && launched.pid !== undefined) this.kill(launched.pid);
   }
 
   private start(): Promise<LaunchedBrowser> {

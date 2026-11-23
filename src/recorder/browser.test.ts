@@ -148,6 +148,28 @@ describe('WarmBrowser', () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  it("kills a browser that doesn't close in time, so the next call isn't held up", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const stuck = new FakeBrowser();
+    stuck.close = () => new Promise<void>(() => {}); // a wedged browser
+    const kill = vi.fn();
+    const { launch, browsers } = fakeLauncher();
+    launch.mockImplementationOnce(async () => ({
+      browser: stuck as unknown as LaunchedBrowser['browser'],
+      label: 'Stuck',
+      pid: 4242,
+    }));
+    const warm = new WarmBrowser(launch, 60_000, { closeTimeoutMs: 5_000, kill });
+    (await warm.acquire()).release();
+    const closing = warm.close();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await closing;
+    expect(kill).toHaveBeenCalledWith(4242);
+    const next = warm.acquire();
+    await vi.advanceTimersByTimeAsync(5);
+    expect((await next).launched.browser).toBe(browsers[0]);
+  });
+
   it('a failed launch is not cached', async () => {
     const launch = vi.fn<() => Promise<LaunchedBrowser>>().mockRejectedValueOnce(new Error('no Chrome'));
     const { launch: works } = fakeLauncher();

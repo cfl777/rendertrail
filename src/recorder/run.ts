@@ -18,10 +18,15 @@ const LAUNCH_ARGS = [
   '--force-webrtc-ip-handling-policy',
   '--webrtc-ip-handling-policy=disable_non_proxied_udp',
 ];
+/** Playwright's default is 3 minutes; a browser that takes this long won't record well anyway. */
+const LAUNCH_TIMEOUT_MS = 30_000;
 const HTML =
   '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div><script src="/app.js"></script></body></html>';
 
 export class RecorderError extends Error {
+  /** Set when the browser may be left in a bad state (a page that won't close): don't reuse it. */
+  browserBroken = false;
+
   constructor(
     readonly kind: 'browser' | 'mount' | 'step' | 'timeout',
     message: string,
@@ -34,6 +39,33 @@ export class RecorderError extends Error {
 export interface LaunchedBrowser {
   browser: Browser;
   label: string;
+  /** The browser's process id, so a browser that won't close can be killed (browser.ts). */
+  pid?: number;
+}
+
+/** Resolves true when `work` settles within `ms`, false when it fails or takes longer. */
+export async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  try {
+    return await Promise.race([work.then(() => true, () => false), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Chrome's own browser process id (Playwright doesn't expose it for a launched browser). */
+async function browserPid(browser: Browser): Promise<number | undefined> {
+  try {
+    const session = await browser.newBrowserCDPSession();
+    const info = (await session.send('SystemInfo.getProcessInfo')) as { processInfo: { type: string; id: number }[] };
+    await session.detach().catch(() => {});
+    return info.processInfo.find((p) => p.type === 'browser')?.id;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -64,14 +96,14 @@ export function noBrowserError(chromeError: string, chromiumError: string): Reco
 export async function launchBrowser(): Promise<LaunchedBrowser> {
   let chromeError = '';
   try {
-    const browser = await chromium.launch({ channel: 'chrome', args: LAUNCH_ARGS });
-    return { browser, label: `Chrome ${browser.version()}` };
+    const browser = await chromium.launch({ channel: 'chrome', args: LAUNCH_ARGS, timeout: LAUNCH_TIMEOUT_MS });
+    return { browser, label: `Chrome ${browser.version()}`, pid: await browserPid(browser) };
   } catch (err) {
     chromeError = err instanceof Error ? (err.message.split('\n')[0] ?? err.message) : 'Unknown error';
   }
   try {
-    const browser = await chromium.launch({ args: LAUNCH_ARGS });
-    return { browser, label: `Chromium ${browser.version()}` };
+    const browser = await chromium.launch({ args: LAUNCH_ARGS, timeout: LAUNCH_TIMEOUT_MS });
+    return { browser, label: `Chromium ${browser.version()}`, pid: await browserPid(browser) };
   } catch (err) {
     const chromiumError = err instanceof Error ? (err.message.split('\n')[0] ?? err.message) : 'Unknown error';
     throw noBrowserError(chromeError, chromiumError);
@@ -167,30 +199,39 @@ async function recordInPage(
   timing.scriptedMs = steps.reduce((sum, step) => sum + scriptedDelayMs(step), 0);
 
   start = performance.now();
-  // As one JSON string: for laggy-search's 1,000-row trace, about 6 ms instead of 130 ms with
-  // Playwright's value-by-value serialization (docs/run-timing.md). Same data: the trace holds only
-  // JSON values (strings, finite numbers, booleans, null).
-  const json: unknown = await page.evaluate(
-    'JSON.stringify({ commits: window.__RT__.commits, errors: window.__RT__.errors, truncated: window.__RT__.truncated })',
-  );
+  // As one JSON string, made by the instrumentation (page/instrument.ts): for laggy-search's
+  // 1,000-row trace about 6 ms instead of 130 ms with Playwright's value-by-value copy.
+  const json: unknown = await page.evaluate('window.__RT__.serialize()');
   const trace: unknown = typeof json === 'string' ? JSON.parse(json) : undefined;
   timing.collectMs = since(start);
   if (!isTrace(trace)) throw new RecorderError('mount', 'The page instrumentation returned no trace.', pageErrors);
   return trace;
 }
 
-/** One run in a fresh browser context, limited to LIMITS.runTimeoutMs. */
-export async function runOnce(browser: Browser, app: string, instrumentation: string, steps: Step[]): Promise<RunOutput> {
+/**
+ * One run in a fresh browser context. Everything, creating the context and page included, is limited
+ * to LIMITS.runTimeoutMs; closing the context to LIMITS.closeTimeoutMs. A run that timed out, or a
+ * context that didn't close (its page might keep running the user's timers), marks the error
+ * `browserBroken`, so the browser isn't reused. `signal` stops the run early (a cancelled call).
+ */
+export async function runOnce(
+  browser: Browser,
+  app: string,
+  instrumentation: string,
+  steps: Step[],
+  signal?: AbortSignal,
+): Promise<RunOutput> {
   const runStart = performance.now();
   const timing: RunTiming = { contextMs: 0, loadMountMs: 0, stepsMs: 0, scriptedMs: 0, collectMs: 0, closeMs: 0, totalMs: 0 };
-  // Context-wide, so popups (window.open) get the same rules; service workers can't bypass routes.
-  const context = await browser.newContext({ serviceWorkers: 'block' });
   const pageErrors: string[] = [];
   const keep = (text: string): void => {
     if (pageErrors.length < MAX_PAGE_ERRORS) pageErrors.push(text);
   };
-  let timer: NodeJS.Timeout | undefined;
-  try {
+  // Context-wide, so popups (window.open) get the same rules; service workers can't bypass routes.
+  const contextReady = browser.newContext({ serviceWorkers: 'block' });
+
+  const record = async (): Promise<RecordedTrace> => {
+    const context = await contextReady;
     await context.route('**/*', (route) => {
       const url = route.request().url();
       if (url === `${ORIGIN}/`) return route.fulfill({ contentType: 'text/html', body: HTML });
@@ -204,19 +245,46 @@ export async function runOnce(browser: Browser, app: string, instrumentation: st
     page.on('console', (message) => {
       if (message.type() === 'error') keep(`console.error: ${message.text()}`);
     });
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new RecorderError('timeout', `The run took longer than ${LIMITS.runTimeoutMs / 1000} s.`, pageErrors)),
-        LIMITS.runTimeoutMs,
-      );
-    });
-    const trace = await Promise.race([recordInPage(page, instrumentation, steps, pageErrors, timing), timeout]);
-    return { trace, pageErrors, timing };
-  } finally {
-    clearTimeout(timer);
-    const closeStart = performance.now();
-    await context.close().catch(() => {});
-    timing.closeMs = since(closeStart);
-    timing.totalMs = since(runStart);
+    return recordInPage(page, instrumentation, steps, pageErrors, timing);
+  };
+
+  let timer: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
+  const stopped = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new RecorderError('timeout', `The run took longer than ${LIMITS.runTimeoutMs / 1000} s.`, pageErrors);
+      error.browserBroken = true; // a page busy in a loop might not let go
+      reject(error);
+    }, LIMITS.runTimeoutMs);
+    onAbort = () => reject(new RecorderError('timeout', 'The call was cancelled before the recording finished.', pageErrors));
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
+  });
+
+  let failure: unknown;
+  let trace: RecordedTrace | undefined;
+  try {
+    trace = await Promise.race([record(), stopped]);
+  } catch (err) {
+    failure = err;
   }
+  clearTimeout(timer);
+  if (onAbort) signal?.removeEventListener('abort', onAbort);
+
+  const closeStart = performance.now();
+  const closed = await settlesWithin(
+    contextReady.then((context) => context.close()),
+    LIMITS.closeTimeoutMs,
+  );
+  timing.closeMs = since(closeStart);
+  timing.totalMs = since(runStart);
+
+  if (failure === undefined && !closed) {
+    failure = new RecorderError('browser', `Chrome didn't close the recorded page within ${LIMITS.closeTimeoutMs / 1000} s.`, pageErrors);
+  }
+  if (failure !== undefined) {
+    if (!closed && failure instanceof RecorderError) failure.browserBroken = true;
+    throw failure;
+  }
+  return { trace: trace!, pageErrors, timing };
 }
