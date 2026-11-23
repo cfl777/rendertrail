@@ -1,0 +1,68 @@
+# The analyzer on all six fixtures
+
+Written 2026-11-23 on branch `analyzer-all-fixtures`. Until now only laggy-search had its findings machine-checked. I ran the real recorder and analyzer on the other five fixtures (unfixed, fixed, and the re-run comparison from unfixed to fixed) and checked each result line by line against its EXPECTED.md.
+
+**Where the checks live now**
+- Each `fixtures/*/expected.json` has a `findings` section in laggy-search's format: what must be reported, what must not be, and the comparison.
+- `test/golden/analyzer.golden.test.ts` runs every fixture in a real browser and fails if any known fixture has no `findings` section.
+- `test/analyzer-fixtures.test.ts` runs the same checks on the saved traces in `test/fixtures/traces/`, plus one test for each bug below. It's part of `npm test` and needs no browser.
+- The card harness (`npm run dev:card`) has one new state per fixture, named `fixture-<name>`.
+
+## What the tool reports now
+
+Numbers come from the saved traces on the Windows dev machine. Timings change from machine to machine; the findings don't.
+
+| Fixture | Headline, then findings in rank order | Matches EXPECTED.md |
+|---|---|---|
+| cart-summary | "Every click causes an extra update: CartSummary sets state inside an effect." 1. Rule 2: `setTotal` at `CartSummary.tsx:28`, one extra update per click (0.5 ms), 4 of 4 clicks. Fix: `const total = items.reduce(…)`. `setQuote` (in `.then`) and the mount updates are not reported. | ✔ (line 28: see open case 1) |
+| cart-summary, fixed | "Nothing to fix: each click takes 0.9 ms." Re-run: "Fixed." `setTotal` resolved, nothing new. | ✔ |
+| pricing-toggle | "Every click re-renders 81 components that didn't change, twice: FeatureMatrix and 80 × FeatureRow." 1. Rule 1: `labels` at `PricingPage.tsx:26`, about 27 ms per click (both updates). 2. Rule 2: `setDiscount` at `PricingPage.tsx:8`, 14 ms per click; the text says this time overlaps with finding 1. PlanCard, FeatureRow and mount are not reported. | ✔ (line 8: see open case 1) |
+| pricing-toggle, fixed | "Nothing to fix: each click takes 0.1 ms." Re-run: "Fixed." Both findings resolved. | ✔ |
+| theme-storefront | "Nothing to fix: each click takes 6.9 ms." No findings. The text says "No problem passed the thresholds". Card state is no-findings. Tree: ProductGrid and ProductCard ×40 are "needed", PromoBanner is "skipped". | ✔ (wording: see open case 4) |
+| todo-toggle | "Every step of the interaction re-renders 100 components that didn't change: 100 × TodoItem." 1. Rule 1: `onToggle` passed at `TodoApp.tsx:29`, declared at `TodoApp.tsx:9`, about 10 ms per step, 6 of 6 steps. Fix: `useCallback` with an empty list. The clicked row and the new row are not counted. | ✔ |
+| todo-toggle, fixed | "Nothing to fix: each step takes 0.2 ms." Re-run: "Fixed." | ✔ |
+| user-table | "Every click re-renders 151 components that didn't change: UserTable and 150 × UserRow." 1. Rule 1: `columns` at `UserAdmin.tsx:14`, about 15 ms per click. Fix: move it out of the component (`const COLUMNS = […]`); useMemo also works. | ✔ (fix kind: see open case 3) |
+| user-table, fixed | "Nothing to fix: each click takes 0.2 ms." Re-run: "Fixed." | ✔ |
+| laggy-search (re-checked) | No change except the rule 2 snippet: it now shows the whole `useEffect(…)` line (still line 10). | ✔ |
+
+No threshold dropped anything real. Every expected finding clears its threshold by a wide margin. The smallest is cart-summary's rule 2 at 0.5 ms per click; rule 2 is measured by how many steps it happens on, not by time.
+
+## Bugs found and fixed
+
+Each item: what the tool did before → what it does now. The test is in `test/analyzer-fixtures.test.ts` unless another file is named.
+
+1. **Rule 2 pointed at the setter's line, not the effect's.** cart-summary said `:29` and pricing-toggle `:9`; EXPECTED.md says `:28` and `:8` → the finding now points at the `useEffect(` line, and the "Show me the line" text adds "it calls `setTotal` on line 29". (`src/analyzer/rules.ts`, `stateInEffectCandidates`; `source.ts` keeps the effect call.)
+2. **Rule 2 left out the fix code when the value contained an arrow.** "Fix: compute total during render." → "…: `const total = items.reduce((sum, item) => …, 0);`". Only the updater form `setX((prev) => …)` has no code now.
+3. **Rule 2 listed the mount follow-up (commit 1) among its updates** → it lists only updates inside a step (`[4, 7, 10, 13]`), as EXPECTED.md asks ("mount isn't a step").
+4. **Rule 1 listed each update once per row**: 600 entries for todo-toggle → one entry per update (`[1…6]`).
+5. **Rule 1 ignored how many instances re-rendered.** "re-renders TodoItem, which didn't change" → "re-renders 100 components that didn't change: 100 × TodoItem". The text result now starts with "100 × TodoItem (memo) re-render…".
+6. **Rule 1 added up both updates of a click as if they were one.** "re-renders 162 components…: FeatureMatrix and 160 × FeatureRow", while the tree showed 80 → "81 components that didn't change, twice: FeatureMatrix and 80 × FeatureRow". The text and tree now agree.
+7. **The card's tree row showed the bar's two-update time.** FeatureMatrix's row said 27 ms although the tree shows one update (13.4 ms) → when the top finding happens more than once per step, the row shows its own time. (`ui/src/model.ts` `treeRowMs`; tests in `ui/src/model.test.ts` and `ui/src/card.test.tsx`)
+8. **No hoisting advice for literals that use nothing from the component.** "Wrap it in useMemo" → "move it outside, to the top of the file: `const COLUMNS = ['name', 'email', 'role'];`, then pass `columns={COLUMNS}`. Wrapping it in useMemo also works: …". The same applies to `LABELS` in pricing-toggle. This is what both fixed files do.
+9. **A function declared with `function name() {}` and passed by name had no fix code and no pointer to its declaration.** Now the finding says it's declared at `TodoApp.tsx:9`, gives `const handleToggle = useCallback((id: number) => { … }, []);`, and explains why the list can stay empty.
+10. **pricing-toggle's two costs looked like they add up** (27 + 14 ms against a 27.6 ms click). Rule 2's text now says its extra update also re-renders FeatureMatrix, so part of the time is the same waste and shouldn't be added. The headline still names only the top finding. (`src/analyzer/index.ts` `noteOverlaps`)
+11. **Wording.** The subline said "An update feels smooth when an update fits…" → "It feels smooth when an update fits…". todo-toggle's caption said "played 3 actions in TodoApp" next to "6 steps" → "typed “milk” and clicked 2 times in TodoApp". (`src/analyzer/words.ts`; test in `words.test.ts`)
+
+I found no recorder bugs.
+
+## Open cases that need your ruling
+
+1. **Which line rule 2 points at.** EXPECTED.md for cart-summary and pricing-toggle says "at `:28` (the setter is on line 29)". I read that as the effect's line and changed the tool to match (bug 1). If you meant the setter's line, revert that one line in `stateInEffectCandidates` and set the two `location` values in expected.json back to `:29` and `:9`. laggy-search is the same either way, because its effect fits on one line.
+2. **todo-toggle: the JSX line or the declaration line?** EXPECTED.md makes `TodoApp.tsx:29`, where the prop is passed, the main location, and the tool follows it. But for `const handleToggle = (id) => {…}` (an arrow assigned to a const) the tool has always pointed at the declaration line, where the value is created. Both are the same mistake, so they should point at the same kind of line. My recommendation: make the main location the line where the value is created (`:9`) and keep the JSX line in the text. That means changing EXPECTED.md, so it's your call.
+3. **There's no fix kind for "move it out of the component".** user-table and pricing-toggle report `fix: useMemo` although the text recommends hoisting first. A new `FixKind` value (`'hoist'`) would make the data match the text, but it changes the shared output types, so I didn't add it.
+4. **What theme-storefront says.** EXPECTED.md: "The text result should say that no main problem was found." The tool says "Nothing to fix: each click takes 6.9 ms." (headline) and "No problem passed the thresholds: …" (text). It means the same thing; tell me if you want the exact words.
+5. **laggy-search's re-run says "Fixed." while SearchBox's rule 2 is still there.** That's the card's rule in `ui/src/model.ts`: "Fixed" means the top finding is resolved. The "Still there" line shows below it. None of the five new fixtures hits this case. EXPECTED.md doesn't cover it.
+6. **"Must NOT be reported" items the expected.json format can't express.** These are todo-toggle's clicked row (Task 3, commit 5) and new row (Task 101, commit 6). The finding legitimately includes those updates for the other rows, so a `commit` entry can't single out one row. The unit test checks the count instead: 99 rows on the toggle click, and the new row isn't counted.
+7. **cart-summary's text counts the 2 mount follow-ups as "later (timers or other non-input updates)".** That's accurate ("other"), but a reader may look for a timer. Low priority.
+
+## Wording a junior could trip over
+
+- **"(memo)" and "100 × TodoItem (memo) re-render"** assume the reader knows `memo`. The "Why does it happen?" text explains it, but the headline doesn't.
+- **"twice"** (pricing-toggle) means "in both updates of one click". Without rule 2's text next to it, a junior may not know why there are two updates. The two findings explain each other only when read together.
+- **cart-summary's headline is a 0.5 ms problem on a click that takes 1.4 ms and "should feel smooth".** It's correct by the spec (rule 2 has no time threshold), but a junior may ask why it matters. The why text answers it: "two updates where one would do".
+- **"step"** (todo-toggle mixes typing and clicks) is the least concrete unit. The caption now says what was done, but the tree title is still "What one step does".
+
+## Not fixed (outside this task)
+
+- `scripts/card-screenshots.mjs:43`: the clean-up regex is `-(light|dark)-d+.png$` (missing `\`), so old harness screenshots are never deleted. They're overwritten by name, so nothing breaks today.
+- In theme-storefront's tree data, the ProductCard ×40 row holds 7.9 ms, more than its parent ProductGrid's 6.8 ms, because 40 rounded per-card medians are summed. The card only shows times on "memo couldn't skip it" rows, so nobody sees it today.
