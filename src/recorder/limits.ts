@@ -7,6 +7,8 @@ export const LIMITS = {
   /** Limit for a single step or the mount, so a missing selector fails fast. */
   actionTimeoutMs: 5_000,
   runs: 3,
+  /** A warm browser is closed after this long without a call (browser.ts). */
+  browserIdleMs: 60_000,
 } as const;
 
 /** Default delay between typed characters when a `type` step has no delayMs. */

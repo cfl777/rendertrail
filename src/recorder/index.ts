@@ -1,11 +1,13 @@
 /**
- * The recorder: bundle → run in headless Chrome (LIMITS.runs times, fresh page each) → summarize.
- * Never throws; problems come back as a RecordError.
+ * The recorder: bundle → run in headless Chrome (LIMITS.runs times, a fresh browser context each)
+ * → summarize. Never throws; problems come back as a RecordError. The browser stays warm between
+ * calls (browser.ts); recordings never overlap, so one can't slow down another's measured timings.
  */
 import type { CallTiming, InspectRenderInput, RecordError, RecordedTrace, RunTiming, TraceSummary } from '../shared/types.js';
 import { bundleApp, loadInstrumentation, normalizePath, reactVersion } from './bundle.js';
 import { LIMITS } from './limits.js';
-import { launchBrowser, RecorderError, runOnce, since } from './run.js';
+import { warmBrowser, type Lease } from './browser.js';
+import { RecorderError, runOnce, since } from './run.js';
 import { summarize } from './summarize.js';
 
 export type RecordInput = Pick<InspectRenderInput, 'files' | 'entry' | 'exportName' | 'props' | 'steps'>;
@@ -34,7 +36,16 @@ export function checkInput(input: RecordInput): RecordError | null {
   return null;
 }
 
-export async function recordRender(input: RecordInput): Promise<RecordResult> {
+let queue: Promise<unknown> = Promise.resolve();
+
+export function recordRender(input: RecordInput): Promise<RecordResult> {
+  const queued = performance.now();
+  const result = queue.then(() => recordNow(input, since(queued)));
+  queue = result.catch(() => {});
+  return result;
+}
+
+async function recordNow(input: RecordInput, queueMs: number): Promise<RecordResult> {
   const invalid = checkInput(input);
   if (invalid) return { ok: false, error: invalid };
 
@@ -45,14 +56,16 @@ export async function recordRender(input: RecordInput): Promise<RecordResult> {
     return { ok: false, error: { kind: 'bundle', message: bundled.message, details: bundled.details, stubs: bundled.stubs } };
   }
 
-  let launched: Awaited<ReturnType<typeof launchBrowser>> | undefined;
+  let lease: Lease | undefined;
+  let discard = false;
   try {
     start = performance.now();
     const instrumentation = await loadInstrumentation();
     const instrumentationMs = since(start);
     start = performance.now();
-    launched = await launchBrowser();
+    lease = await warmBrowser.acquire();
     const launchMs = since(start);
+    const { launched, reused } = lease;
     const traces: RecordedTrace[] = [];
     const pageErrors: string[] = [];
     const runs: RunTiming[] = [];
@@ -77,15 +90,18 @@ export async function recordRender(input: RecordInput): Promise<RecordResult> {
       ok: true,
       summary,
       traces,
-      timing: { bundleMs, instrumentationMs, launchMs, browserReused: false, runs, summarizeMs },
+      timing: { queueMs, bundleMs, instrumentationMs, launchMs, browserReused: reused, runs, summarizeMs },
     };
   } catch (err) {
+    // A run that timed out may have left a page busy in a loop; anything unexpected may have left the
+    // browser in a bad state. Don't keep that browser for the next call.
+    discard = !(err instanceof RecorderError) || err.kind === 'timeout' || err.kind === 'browser';
     if (err instanceof RecorderError) {
       return { ok: false, error: { kind: err.kind, message: err.message, details: err.details, stubs: bundled.stubs } };
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     return { ok: false, error: { kind: 'internal', message: `The recorder failed: ${message}`, details: [], stubs: bundled.stubs } };
   } finally {
-    await launched?.browser.close().catch(() => {});
+    lease?.release(discard);
   }
 }

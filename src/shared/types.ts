@@ -346,6 +346,8 @@ export interface RunTiming {
 
 /** Where one inspect_render call's wall-clock time went, in ms. Diagnostics only: never part of a finding. */
 export interface CallTiming {
+  /** Waiting for another call's recording to finish (recordings never overlap). */
+  queueMs: number;
   bundleMs: number;
   /** Loading the page instrumentation (cached after the first call in a process). */
   instrumentationMs: number;
