@@ -627,7 +627,7 @@
           "compilerFixes": false
         },
         "texts": {
-          "summary": "PricingPage sets state inside useEffect (PricingPage.tsx:8): one extra update per click (14 ms). That extra update also re-renders FeatureMatrix for nothing, so part of this time is the same waste: don't add the two up. Fix: compute discount during render: `const discount = billing === 'yearly' ? 0.2 : 0;`. React Compiler doesn't fix this one.",
+          "summary": "PricingPage sets state inside useEffect (PricingPage.tsx:8): one extra update per click (14 ms). Fix: compute discount during render: `const discount = billing === 'yearly' ? 0.2 : 0;`. React Compiler doesn't fix this one. Its extra update also re-renders FeatureMatrix (finding 1) for nothing, so part of its time is the same waste: don't add the two up.",
           "why": "PricingPage copies a value into state inside useEffect. React renders PricingPage, runs the effect, and then has to render it again with the new discount: two updates where one would do.",
           "line": "`useEffect(() => { setDiscount(billing === 'yearly' ? 0.2 : 0); }, [billing])` at PricingPage.tsx:8 (it calls `setDiscount` on line 9).",
           "fix": "Compute `discount` during render instead: `const discount = billing === 'yearly' ? 0.2 : 0;`, and remove its useState and the useEffect. React Compiler doesn't fix this one."

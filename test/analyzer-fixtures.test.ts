@@ -95,7 +95,9 @@ describe('cart-summary (rule 2 by clicks, with a look-alike in .then)', () => {
     expect(f).toMatchObject({ extraUpdatesPerStep: 1, stepsAffected: 4 });
   });
 
-  it('stays right when a run records an extra mount follow-up (seen on React 18): only the indexes move', async () => {
+  // On React 18 one run has recorded one more update than EXPECTED.md lists (cause not investigated).
+  // Here an extra update is inserted before the clicks, which shifts every later index by one.
+  it('stays right when run 1 has one more update before the clicks: only the indexes move', async () => {
     const saved = savedFixtureTrace('cart-summary', 'Cart.tsx');
     const first = saved.traces[0]!;
     const commits = [...first.commits.slice(0, 2), first.commits[1]!, ...first.commits.slice(2)].map((c, index) => ({ ...c, index }));
@@ -104,6 +106,16 @@ describe('cart-summary (rule 2 by clicks, with a look-alike in .then)', () => {
     const a = await analyze({ summary, traces: [{ ...first, commits }], files: fixtureFiles('cart-summary') });
     expect(a.allFindings.map((f) => [f.id, f.location?.line, f.stepsAffected])).toEqual([['state-in-effect:CartSummary:setTotal', 28, 4]]);
     expect(a.allFindings[0]!.commits).toEqual([5, 8, 11, 14]);
+  });
+
+  it("keeps CartSummary's row in the tree: the card marks the extra update there", async () => {
+    const { a } = await analyzed('cart-summary', 'Cart.tsx');
+    expect(a.keystroke.tree.map((r) => [r.name, r.label])).toEqual([
+      ['Cart', 'state-origin'],
+      ['CartLine', 'nothing-changed'],
+      ['CartLine', 'needed'],
+      ['CartSummary', 'needed'],
+    ]);
   });
 
   it('groups both follow-ups (setTotal, then setQuote a microtask later) into the click that caused them', async () => {
@@ -141,7 +153,7 @@ describe('pricing-toggle (rules 1 and 2 together)', () => {
     const { a, text } = await analyzed('pricing-toggle', 'PricingPage.tsx');
     const r2 = a.findings[1]!;
     expect(r2.location).toMatchObject({ file: 'PricingPage.tsx', line: 8 });
-    expect(r2.texts.summary).toContain("That extra update also re-renders FeatureMatrix for nothing, so part of this time is the same waste: don't add the two up.");
+    expect(r2.texts.summary.endsWith("React Compiler doesn't fix this one. Its extra update also re-renders FeatureMatrix (finding 1) for nothing, so part of its time is the same waste: don't add the two up.")).toBe(true);
     expect(text).toContain('`const discount = billing === \'yearly\' ? 0.2 : 0;`');
     expect(a.keystroke.wastedMsPerStep).toBeLessThanOrEqual(a.keystroke.msPerStep);
   });
@@ -158,7 +170,7 @@ describe('theme-storefront (the decoy: nothing to fix)', () => {
     const { a, text } = await analyzed('theme-storefront', 'Storefront.tsx');
     expect(a.allFindings).toEqual([]);
     expect(a.keystroke.headline).toMatch(/^Nothing to fix: each click takes [\d.]+ ms\.$/);
-    expect(text).toContain('No problem passed the thresholds');
+    expect(text).toContain('No main problem found: ');
     expect(a.keystroke.tree.map((r) => [r.name, r.label])).toEqual([
       ['Storefront', 'state-origin'],
       ['ProductGrid', 'needed'],
@@ -191,14 +203,15 @@ describe('todo-toggle (rule 1, function prop, 100 rows)', () => {
     expect(f.location).toMatchObject({ file: 'TodoApp.tsx', line: 29, snippet: 'onToggle={handleToggle}' });
     expect(f.texts.line).toContain('`handleToggle` is declared at TodoApp.tsx:9: `function handleToggle(id: number) { … }`.');
     expect(f.texts.fix).toContain('`const handleToggle = useCallback((id: number) => { … }, []);`');
-    expect(f.texts.fix).toContain('The dependency list can stay empty');
+    // The reason EXPECTED.md gives: the setter uses the functional updater.
+    expect(f.texts.fix).toContain('The dependency list can stay empty: it only calls `setTodos`, with an updater (`setTodos((prev) => …)`), so it never reads the current state');
   });
 
   it('words a mixed interaction without "keystroke" or "letter"', async () => {
     const { a, text } = await analyzed('todo-toggle', 'TodoApp.tsx');
     expect(a.keystroke.unit).toBe('step');
     expect(a.keystroke.caption).toBe('typed “milk” and clicked 2 times in TodoApp');
-    expect(a.keystroke.subline).toMatch(/^Each step takes [\d.]+ ms\. It feels smooth when an update fits in one screen refresh/);
+    expect(a.keystroke.subline).toMatch(/^Each step takes [\d.]+ ms\. A step feels instant when an update fits in one screen refresh .*, so this should feel smooth\.$/);
     // The findings part; the recording note below the run id quotes the raw steps ("100 ms between letters").
     expect(`${a.keystroke.headline} ${a.keystroke.subline} ${text.slice(0, text.indexOf('Run id:'))}`).not.toMatch(/keystroke|letter/);
   });

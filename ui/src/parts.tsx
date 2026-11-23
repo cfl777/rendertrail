@@ -150,6 +150,12 @@ export function Tree({ k, top }: { k: KeystrokeView; top: Finding | undefined })
   if (k.tree.length === 0) return null;
   const { treeTitle } = stepWords(k);
   const minDepth = Math.min(...k.tree.map((r) => r.depth));
+  // When the main problem is state set in an effect, the tree shows the input update; the extra
+  // update comes right after it, on the component the headline names. Mark that row, and don't
+  // paint cheap "nothing changed" rows as the problem (cart-summary: CartLine isn't it).
+  const extra = top?.rule === 'state-in-effect' ? top : undefined;
+  const extraRow = extra ? k.tree.findIndex((r) => r.name === extra.component) : -1;
+  const extraCount = extra ? Math.max(1, Math.round(extra.extraUpdatesPerStep ?? 1)) : 0;
   return (
     <section className="tree" aria-label={treeTitle}>
       <div className="section-head">
@@ -175,9 +181,15 @@ export function Tree({ k, top }: { k: KeystrokeView; top: Finding | undefined })
               </span>
               {treeRowMs(row, k, top) !== null && <span className="row-ms">{msText(treeRowMs(row, k, top)!)}</span>}
               <span className="row-label">
-                <span className={`dot ${DOT[row.label]}`} aria-hidden="true" />
+                <span className={`dot ${extra && row.label === 'nothing-changed' ? 'dot-muted' : DOT[row.label]}`} aria-hidden="true" />
                 {TREE_LABEL_TEXT[row.label]}
               </span>
+              {i === extraRow && (
+                <span className="row-label row-extra" data-testid="extra-update">
+                  <span className="dot dot-warning" aria-hidden="true" />
+                  Then sets its own state in an effect: {extraCount === 1 ? '1 extra update' : `${extraCount} extra updates`}
+                </span>
+              )}
             </li>
           );
         })}

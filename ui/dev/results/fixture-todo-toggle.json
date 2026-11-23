@@ -413,7 +413,7 @@
           "summary": "100 × TodoItem (memo) re-render on every step: prop `onToggle` is a new function each render with the same value, passed at TodoApp.tsx:29; `handleToggle` is declared at TodoApp.tsx:9. Wasted: about 10.1 ms per step. Fix: wrap `handleToggle` in useCallback (React Compiler would do this automatically).",
           "why": "memo only skips a render when every prop is the same object as last time. `onToggle` looks the same, but it's a new function on every render, so TodoItem re-renders for nothing.",
           "line": "`onToggle={handleToggle}` at TodoApp.tsx:29. `handleToggle` is declared at TodoApp.tsx:9: `function handleToggle(id: number) { … }`.",
-          "fix": "Wrap `handleToggle` (declared at TodoApp.tsx:9) in useCallback so TodoItem gets the same function until its dependencies change: `const handleToggle = useCallback((id: number) => { … }, []);`, keeping its body. The dependency list can stay empty: it reads nothing from the component except state setters, which never change. React Compiler would do this automatically."
+          "fix": "Wrap `handleToggle` (declared at TodoApp.tsx:9) in useCallback so TodoItem gets the same function until its dependencies change: `const handleToggle = useCallback((id: number) => { … }, []);`, keeping its body. The dependency list can stay empty: it only calls `setTodos`, with an updater (`setTodos((prev) => …)`), so it never reads the current state, and a state setter never changes. React Compiler would do this automatically."
         },
         "rank": 1
       }
@@ -430,7 +430,7 @@
       "wastedMsPerStep": 10.1,
       "restMsPerStep": 0.2,
       "headline": "Every step of the interaction re-renders 100 components that didn't change: 100 × TodoItem.",
-      "subline": "Each step takes 10.3 ms. It feels smooth when an update fits in one screen refresh (about 16.7 ms), so this should feel smooth.",
+      "subline": "Each step takes 10.3 ms. A step feels instant when an update fits in one screen refresh (about 16.7 ms), so this should feel smooth.",
       "tree": [
         {
           "name": "TodoApp",

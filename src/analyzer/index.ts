@@ -79,16 +79,20 @@ export function rank(candidates: readonly Candidate[]): Finding[] {
 }
 
 /**
- * A rule 2 finding whose extra updates also re-render a reported rule 1 component for nothing: the
- * two costs overlap (pricing-toggle), so its summary says so and nobody adds them up.
+ * A rule 2 finding whose extra updates also re-render a listed rule 1 component for nothing: the
+ * two costs overlap (pricing-toggle), so its summary says so and nobody adds them up. Only findings
+ * that are listed (the top ANALYZER.maxFindings) are named, by their number in the list.
  */
-function noteOverlaps(findings: Finding[]): Finding[] {
+export function noteOverlaps(findings: Finding[]): Finding[] {
   return findings.map((f) => {
     if (f.rule !== 'state-in-effect') return f;
-    const overlapping = findings.filter((o) => o.rule === 'unstable-prop' && o.commits.some((c) => f.commits.includes(c))).map((o) => o.component);
+    const overlapping = findings.filter(
+      (o) => o.rule === 'unstable-prop' && o.rank <= ANALYZER.maxFindings && o.commits.some((c) => f.commits.includes(c)),
+    );
     if (overlapping.length === 0) return f;
-    const note = ` That extra update also re-renders ${overlapping.join(', ')} for nothing, so part of this time is the same waste: don't add the two up.`;
-    return { ...f, texts: { ...f.texts, summary: f.texts.summary.replace(/\. Fix: /, `.${note} Fix: `) } };
+    const names = overlapping.map((o) => `${o.component} (finding ${o.rank})`).join(', ');
+    const note = ` Its extra update also re-renders ${names} for nothing, so part of its time is the same waste: don't add the two up.`;
+    return { ...f, texts: { ...f.texts, summary: `${f.texts.summary}${note}` } };
   });
 }
 
@@ -155,7 +159,7 @@ export async function analyze(input: AnalyzeInput): Promise<Analysis> {
   const topWaste = findings.find((f) => f.rule === 'unstable-prop');
   const shares = topWaste ? steps.map((s) => (s.renderMs > 0 ? Math.min(1, wasteInStep(trace, s, topWaste.component, timing) / s.renderMs) : 0)) : [];
   const wasted = round(msPerStep * (shares.length ? exactMedian(shares) : 0));
-  const smooth = unit.unit === 'letter' ? 'Typing feels smooth' : unit.unit === 'click' ? 'A click feels instant' : 'It feels smooth';
+  const smooth = unit.unit === 'letter' ? 'Typing feels smooth' : unit.unit === 'click' ? 'A click feels instant' : 'A step feels instant';
 
   const keystroke: KeystrokeView = {
     unit: unit.unit,
@@ -174,7 +178,7 @@ export async function analyze(input: AnalyzeInput): Promise<Analysis> {
         ? 'Try an interaction that changes what the component shows, such as typing into an input.'
         : `${unit.each} takes ${msText(msPerStep)}. ${smooth} when an update fits in one screen refresh (about ${ANALYZER.frameBudgetMs} ms), ` +
           `so this ${overBudget ? 'feels laggy' : 'should feel smooth'}.`,
-    tree: typical ? buildTree(trace, typical.commits[0]!, timing) : [],
+    tree: typical ? buildTree(trace, typical.commits[0]!, timing, findings[0]?.rule === 'state-in-effect' ? findings[0].component : undefined) : [],
   };
   return { steps, allFindings, findings, keystroke };
 }

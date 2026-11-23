@@ -40,7 +40,7 @@ try {
 await mkdir(outDir, { recursive: true });
 // Remove the old harness shots (files right in phase-3/), never the live/ folder.
 for (const entry of await readdir(outDir, { withFileTypes: true })) {
-  if (entry.isFile() && /-(light|dark)-d+.png$/.test(entry.name)) await unlink(path.join(outDir, entry.name));
+  if (entry.isFile() && /-(light|dark)-\d+\.png$/.test(entry.name)) await unlink(path.join(outDir, entry.name));
 }
 const failures = [];
 try {
