@@ -167,7 +167,13 @@ async function recordInPage(
   timing.scriptedMs = steps.reduce((sum, step) => sum + scriptedDelayMs(step), 0);
 
   start = performance.now();
-  const trace: unknown = await page.evaluate('({ commits: window.__RT__.commits, errors: window.__RT__.errors, truncated: window.__RT__.truncated })');
+  // As one JSON string: for laggy-search's 1,000-row trace, about 6 ms instead of 130 ms with
+  // Playwright's value-by-value serialization (docs/run-timing.md). Same data: the trace holds only
+  // JSON values (strings, finite numbers, booleans, null).
+  const json: unknown = await page.evaluate(
+    'JSON.stringify({ commits: window.__RT__.commits, errors: window.__RT__.errors, truncated: window.__RT__.truncated })',
+  );
+  const trace: unknown = typeof json === 'string' ? JSON.parse(json) : undefined;
   timing.collectMs = since(start);
   if (!isTrace(trace)) throw new RecorderError('mount', 'The page instrumentation returned no trace.', pageErrors);
   return trace;
