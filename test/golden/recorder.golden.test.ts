@@ -2,8 +2,11 @@
  * Recorder behaviour in a real browser that the laggy-search fixture doesn't cover: context
  * tracking, click steps, stubbed imports and step errors.
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { warmBrowser } from '../../src/recorder/browser.js';
+import { bundleApp, loadInstrumentation } from '../../src/recorder/bundle.js';
 import { recordRender } from '../../src/recorder/index.js';
+import { launchBrowser } from '../../src/recorder/run.js';
 import { InspectRenderInputSchema, type Step } from '../../src/shared/types.js';
 
 const APP = `
@@ -43,6 +46,9 @@ function input(steps: Step[]) {
     steps,
   });
 }
+
+// The warm browser stays up after the file's last call; close it rather than leave it to the worker's exit.
+afterAll(() => warmBrowser.close());
 
 describe('recorder behaviour', () => {
   it('tells a context change by value from one by reference, and lists stubbed imports', async () => {
@@ -162,5 +168,33 @@ describe('recorder behaviour', () => {
     expect(result.error.kind).toBe('step');
     expect(result.error.message).toContain('Step 1 (click #nope) failed');
     expect(result.error.stubs).toHaveLength(2);
+  });
+});
+
+describe('reading the trace as one JSON string', () => {
+  it('gives the same trace as a value-by-value copy, even when the recorded code patches JSON.stringify', async () => {
+    const patched = `JSON.stringify = () => '"patched"';\n${APP}`;
+    const bundled = await bundleApp({ files: [{ path: 'App.tsx', content: patched }], entry: 'App.tsx', exportName: 'App' });
+    if (!bundled.ok) throw new Error(bundled.message);
+    const { browser } = await launchBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.route('**/*', (route) =>
+        route.request().url().endsWith('/app.js')
+          ? route.fulfill({ contentType: 'text/javascript', body: bundled.code })
+          : route.fulfill({ contentType: 'text/html', body: '<div id="root"></div><script src="/app.js"></script>' }),
+      );
+      await page.addInitScript({ content: await loadInstrumentation() });
+      await page.goto('http://recorder.local/');
+      await page.waitForFunction('window.__RT__ && window.__RT__.commits.length > 0');
+      await page.locator('#bump').click();
+      await page.locator('#toggle').click();
+      const copied = await page.evaluate('({ commits: window.__RT__.commits, errors: window.__RT__.errors, truncated: window.__RT__.truncated })');
+      const viaJson: unknown = JSON.parse((await page.evaluate('window.__RT__.serialize()')) as string);
+      expect((copied as { commits: unknown[] }).commits).toHaveLength(3);
+      expect(viaJson).toEqual(copied);
+    } finally {
+      await browser.close();
+    }
   });
 });

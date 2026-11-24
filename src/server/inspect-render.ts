@@ -1,10 +1,13 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { analyze } from '../analyzer/index.js';
+import { BRAND } from '../brand.js';
 import { formatAnalysis } from '../analyzer/text.js';
 import { formatError } from '../recorder/format.js';
-import { recordRender } from '../recorder/index.js';
+import { checkInput, recordHoldingLock, withRecordingLock } from '../recorder/index.js';
+import { since } from '../recorder/run.js';
 import {
   SCHEMA_VERSION,
+  type CallTiming,
   type Comparison,
   type InspectRenderInput,
   type InspectRenderOutput,
@@ -30,15 +33,42 @@ function errorResult(error: RecordError): CallToolResult {
  * The inspect_render handler: record, analyze, compare with the baseline, store the run. Never
  * throws: problems are normal results that explain what to fix.
  */
-export async function inspectRender(input: InspectRenderInput, runsDirOverride?: string): Promise<CallToolResult> {
+export async function inspectRender(
+  input: InspectRenderInput,
+  runsDirOverride?: string,
+  signal?: AbortSignal,
+): Promise<CallToolResult> {
+  const callStart = performance.now();
   const notes: string[] = [];
   const resolved = resolveRunsDir();
   const dir = runsDirOverride ?? resolved.dir;
   if (!runsDirOverride && resolved.warning) notes.push(`Note: ${resolved.warning}`);
+  const invalid = checkInput(input);
+  if (invalid) return errorResult(invalid);
   try {
-    const result = await recordRender(input);
+    // The turn covers record, analyze and store: nothing of this call may run during the next call's
+    // recording (the analyzer's first TypeScript load blocks Node for a few hundred ms).
+    return await withRecordingLock((queueMs) => recordAndAnalyze(input, dir, notes, callStart, queueMs, signal));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return errorResult({ kind: 'internal', message: `The analysis failed: ${message}`, details: [], stubs: [] });
+  }
+}
+
+async function recordAndAnalyze(
+  input: InspectRenderInput,
+  dir: string,
+  notes: string[],
+  callStart: number,
+  queueMs: number,
+  signal: AbortSignal | undefined,
+): Promise<CallToolResult> {
+  try {
+    const result = await recordHoldingLock(input, { signal }, queueMs);
     if (!result.ok) return errorResult(result.error);
+    let start = performance.now();
     const analysis = await analyze({ summary: result.summary, traces: result.traces, files: input.files });
+    const analyzeMs = since(start);
 
     const id = newRunId(new Set(await listRunIds(dir)));
     const run: StoredRun = {
@@ -64,11 +94,14 @@ export async function inspectRender(input: InspectRenderInput, runsDirOverride?:
     }
 
     let saveError: string | undefined;
+    start = performance.now();
     try {
       await saveRun(run, dir);
     } catch (err) {
       saveError = err instanceof Error ? err.message : 'Unknown error';
     }
+    const storeMs = since(start);
+    const timing: CallTiming = { ...result.timing, analyzeMs, storeMs, totalMs: since(callStart) };
 
     const output: InspectRenderOutput = {
       schemaVersion: SCHEMA_VERSION,
@@ -93,6 +126,8 @@ export async function inspectRender(input: InspectRenderInput, runsDirOverride?:
     return {
       content: [{ type: 'text', text: [text, ...notes].join('\n') }],
       structuredContent: { ...output },
+      // Diagnostics for scripts/time-run.mjs, kept out of structuredContent (which can reach the model).
+      _meta: { [BRAND.timingMetaKey]: timing },
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

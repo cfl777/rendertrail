@@ -10,15 +10,46 @@ import {
   NodeStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/node';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { closeWarmBrowser } from '../recorder/browser.js';
 import { createServer } from './server.js';
 
+/** How long a signalled shutdown waits for the browser to close before exiting anyway. */
+const SHUTDOWN_GRACE_MS = 3_000;
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
+/**
+ * The recorder keeps a browser warm between calls. Close it when the process is told to stop, so no
+ * Chrome is left behind. (A hard kill can't be caught: then Chrome exits by itself when its pipe to
+ * this process breaks.)
+ */
+function closeBrowserOnShutdown(): void {
+  let stopping = false;
+  const stop = (code: number) => (): void => {
+    if (stopping) return;
+    stopping = true;
+    // Exit even if closing stalls: these handlers replace Node's default exit on a signal.
+    setTimeout(() => process.exit(code), SHUTDOWN_GRACE_MS).unref();
+    void closeWarmBrowser().finally(() => process.exit(code));
+  };
+  process.once('SIGINT', stop(130));
+  process.once('SIGTERM', stop(143));
+  process.once('SIGHUP', stop(129));
+}
+
 export async function startStdio(): Promise<void> {
+  closeBrowserOnShutdown();
+  // The host closes stdin to stop a stdio server: close the browser, so nothing keeps this process
+  // alive and it exits by itself, as it did before the browser stayed warm.
+  const onStdinGone = (): void => {
+    void closeWarmBrowser();
+  };
+  process.stdin.once('end', onStdinGone);
+  process.stdin.once('close', onStdinGone);
   await createServer().connect(new StdioServerTransport());
 }
 
 export function startHttp(port: number): void {
+  closeBrowserOnShutdown();
   // Binding to 127.0.0.1 does not stop DNS rebinding: a page on another site can point its
   // DNS at 127.0.0.1 and reach this port same-origin. Refuse any Host or Origin that is not
   // localhost before doing anything else (both guards answer 403 themselves).
