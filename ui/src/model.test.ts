@@ -139,12 +139,18 @@ describe('openedTracker', () => {
 describe('treeRowMs', () => {
   const k = { wastedMsPerStep: 20.2 } as KeystrokeView;
   const row = (label: TreeRow['label'], name = 'ResultsList', ms = 20.1): TreeRow => ({ name, depth: 2, label, memo: true, count: 1, below: {}, ms });
-  const top = { rule: 'unstable-prop', component: 'ResultsList' } as Finding;
+  const top = { rule: 'unstable-prop', component: 'ResultsList', commits: [1, 3, 5, 7, 9], stepsAffected: 5 } as Finding;
 
   it("shows the top finding's row with the bar's wasted time, and no time on other rows", () => {
     expect(treeRowMs(row('memo-broken'), k, top)).toBe(20.2);
     expect(treeRowMs(row('state-origin', 'SearchPage'), k, top)).toBeNull();
     expect(treeRowMs(row('memo-broken', 'Other', 3.2), k, top)).toBe(3.2);
     expect(treeRowMs(row('memo-broken', 'Other', 0.01), k, top)).toBeNull();
+  });
+
+  it('keeps the row its own time when the top finding happens in two updates per step (pricing-toggle)', () => {
+    // The tree shows one update (13.4 ms); the bar's 27 ms covers both updates of the click.
+    const twice = { rule: 'unstable-prop', component: 'FeatureMatrix', commits: [1, 2, 3, 4, 5, 6, 7, 8], stepsAffected: 4 } as Finding;
+    expect(treeRowMs(row('memo-broken', 'FeatureMatrix', 13.4), { wastedMsPerStep: 27 } as KeystrokeView, twice)).toBe(13.4);
   });
 });

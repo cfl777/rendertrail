@@ -1,0 +1,684 @@
+{
+  "title": "Fixture: pricing-toggle, 2 findings",
+  "note": "fixtures/pricing-toggle, unfixed, from its saved trace (test/fixtures/traces). See its EXPECTED.md.",
+  "input": {
+    "files": [
+      {
+        "path": "data.ts",
+        "content": "export type Billing = 'monthly' | 'yearly';\nexport type Plan = { id: string; name: string; monthly: number };\nexport type Feature = { id: number; name: string; plans: string[] };\nexport type Labels = { included: string; missing: string };\n\nexport const PLANS: Plan[] = [\n  { id: 'solo', name: 'Solo', monthly: 18 },\n  { id: 'team', name: 'Team', monthly: 79 },\n  { id: 'studio', name: 'Studio', monthly: 149 },\n];\n\n// 80 features; each is in Studio, two thirds are in Team, one third in Solo.\nexport const FEATURES: Feature[] = Array.from({ length: 80 }, (_, i) => ({\n  id: i + 1,\n  name: `Feature ${i + 1}`,\n  plans: ['studio', ...(i % 3 !== 0 ? ['team'] : []), ...(i % 3 === 2 ? ['solo'] : [])],\n}));\n\nexport function priceFor(monthly: number, billing: Billing, discount: number): number {\n  const base = billing === 'yearly' ? monthly * 12 : monthly;\n  return Math.round(base * (1 - discount));\n}\n"
+      },
+      {
+        "path": "FeatureMatrix.tsx",
+        "content": "import { memo } from 'react';\nimport type { Feature, Labels, Plan } from './data';\n\n// Deliberately slow (about 0.1 ms per row) so wasted renders cost real time.\nfunction busyWait(ms: number) {\n  const end = performance.now() + ms;\n  while (performance.now() < end) {\n    // do nothing\n  }\n}\n\nfunction FeatureRow({ feature, plans, labels }: { feature: Feature; plans: Plan[]; labels: Labels }) {\n  busyWait(0.1);\n  return (\n    <tr>\n      <th>{feature.name}</th>\n      {plans.map((plan) => (\n        <td key={plan.id}>{feature.plans.includes(plan.id) ? labels.included : labels.missing}</td>\n      ))}\n    </tr>\n  );\n}\n\ntype FeatureMatrixProps = { features: Feature[]; plans: Plan[]; labels: Labels };\n\nexport const FeatureMatrix = memo(function FeatureMatrix({ features, plans, labels }: FeatureMatrixProps) {\n  return (\n    <table>\n      <tbody>\n        {features.map((feature) => (\n          <FeatureRow key={feature.id} feature={feature} plans={plans} labels={labels} />\n        ))}\n      </tbody>\n    </table>\n  );\n});\n\nexport const PlanCard = memo(function PlanCard({ name, price }: { name: string; price: number }) {\n  return (\n    <article>\n      <h2>{name}</h2>\n      <p>{price} EUR</p>\n    </article>\n  );\n});\n"
+      },
+      {
+        "path": "PricingPage.tsx",
+        "content": "import { useEffect, useState } from 'react';\nimport { FEATURES, PLANS, priceFor, type Billing } from './data';\nimport { FeatureMatrix, PlanCard } from './FeatureMatrix';\n\nexport default function PricingPage() {\n  const [billing, setBilling] = useState<Billing>('monthly');\n  const [discount, setDiscount] = useState(0);\n  useEffect(() => {\n    setDiscount(billing === 'yearly' ? 0.2 : 0);\n  }, [billing]);\n\n  return (\n    <main>\n      <button\n        aria-label=\"Toggle yearly billing\"\n        onClick={() => setBilling((b) => (b === 'monthly' ? 'yearly' : 'monthly'))}\n      >\n        {billing === 'monthly' ? 'Monthly' : 'Yearly (save 20 %)'}\n      </button>\n      {PLANS.map((plan) => (\n        <PlanCard key={plan.id} name={plan.name} price={priceFor(plan.monthly, billing, discount)} />\n      ))}\n      <FeatureMatrix\n        features={FEATURES}\n        plans={PLANS}\n        labels={{ included: 'Included', missing: 'Not included' }}\n      />\n    </main>\n  );\n}\n"
+      }
+    ],
+    "entry": "PricingPage.tsx",
+    "exportName": "default",
+    "steps": [
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle yearly billing\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle yearly billing\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle yearly billing\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle yearly billing\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      }
+    ]
+  },
+  "output": {
+    "schemaVersion": 1,
+    "run": {
+      "id": "r_pr1c3t",
+      "createdAt": "2026-11-11T09:00:00.000Z",
+      "summary": {
+        "entry": "PricingPage.tsx",
+        "exportName": "default",
+        "reactVersion": "19.3.1",
+        "browser": "Chrome 157.0.8103.79",
+        "steps": [
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle yearly billing\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle yearly billing\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle yearly billing\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle yearly billing\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          }
+        ],
+        "runs": 3,
+        "stable": true,
+        "instability": [],
+        "commitCount": 9,
+        "truncated": false,
+        "commits": [
+          {
+            "index": 0,
+            "trigger": "mount",
+            "renderMs": 18,
+            "renderMsRuns": [
+              18,
+              18.4,
+              18
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 1,
+            "trigger": "input",
+            "renderMs": 14.2,
+            "renderMsRuns": [
+              14.4,
+              14.2,
+              14
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"monthly\" → \"yearly\""
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "trigger": "follow-up",
+            "renderMs": 14.4,
+            "renderMsRuns": [
+              15.1,
+              13.8,
+              14.4
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 0 → 0.2"
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "trigger": "input",
+            "renderMs": 13.6,
+            "renderMsRuns": [
+              13.6,
+              13.6,
+              13.5
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"yearly\" → \"monthly\""
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 4,
+            "trigger": "follow-up",
+            "renderMs": 13.6,
+            "renderMsRuns": [
+              13.7,
+              13.5,
+              13.6
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 0.2 → 0"
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 5,
+            "trigger": "input",
+            "renderMs": 13.5,
+            "renderMsRuns": [
+              13.4,
+              13.5,
+              13.8
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"monthly\" → \"yearly\""
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 6,
+            "trigger": "follow-up",
+            "renderMs": 14.1,
+            "renderMsRuns": [
+              14.1,
+              13.4,
+              15.6
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 0 → 0.2"
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 7,
+            "trigger": "input",
+            "renderMs": 13.6,
+            "renderMsRuns": [
+              13.6,
+              14.2,
+              13.5
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 \"yearly\" → \"monthly\""
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 8,
+            "trigger": "follow-up",
+            "renderMs": 13.9,
+            "renderMsRuns": [
+              13.9,
+              13.4,
+              13.9
+            ],
+            "rendered": [
+              {
+                "name": "PricingPage",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 0.2 → 0"
+                ]
+              },
+              {
+                "name": "PlanCard",
+                "count": 3,
+                "memo": true,
+                "notes": [
+                  "price changed"
+                ]
+              },
+              {
+                "name": "FeatureMatrix",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "FeatureRow",
+                "count": 80,
+                "memo": false,
+                "notes": [
+                  "labels changed (new reference, same value)"
+                ]
+              }
+            ]
+          }
+        ],
+        "rendersAfterMount": {
+          "PricingPage": 8,
+          "PlanCard": 24,
+          "FeatureMatrix": 8,
+          "FeatureRow": 640
+        },
+        "timings": {
+          "mountMs": 18,
+          "inputCommits": 4,
+          "inputMedianMs": 13.6,
+          "followUpCommits": 4,
+          "laterCommits": 0,
+          "frameBudgetMs": 16.7
+        },
+        "stubs": [],
+        "timerResolutionMs": 0.1,
+        "pageErrors": []
+      },
+      "steps": [
+        {
+          "index": 0,
+          "commits": [
+            1,
+            2
+          ],
+          "renderMs": 28.6,
+          "renders": 170
+        },
+        {
+          "index": 1,
+          "commits": [
+            3,
+            4
+          ],
+          "renderMs": 27.2,
+          "renders": 170
+        },
+        {
+          "index": 2,
+          "commits": [
+            5,
+            6
+          ],
+          "renderMs": 27.6,
+          "renders": 170
+        },
+        {
+          "index": 3,
+          "commits": [
+            7,
+            8
+          ],
+          "renderMs": 27.5,
+          "renders": 170
+        }
+      ]
+    },
+    "findings": [
+      {
+        "id": "unstable-prop:FeatureMatrix:labels",
+        "rule": "unstable-prop",
+        "component": "FeatureMatrix",
+        "prop": {
+          "name": "labels",
+          "type": "object"
+        },
+        "location": {
+          "file": "PricingPage.tsx",
+          "line": 26,
+          "snippet": "labels={{ included: 'Included', missing: 'Not included' }}"
+        },
+        "stepsAffected": 4,
+        "steps": 4,
+        "commits": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "msPerStep": 27.41,
+        "msPerAffectedStep": 27.4,
+        "rendersPerStep": 162,
+        "rendersPerAffectedStep": 162,
+        "below": {
+          "FeatureRow": 160
+        },
+        "fix": {
+          "kind": "useMemo",
+          "compilerFixes": true
+        },
+        "texts": {
+          "summary": "FeatureMatrix (memo) re-renders with 80 FeatureRow below it twice on every click: prop `labels` is a new object each render with the same value, created at PricingPage.tsx:26. Wasted: about 27.4 ms per click. Fix: move it out of the component, since it uses nothing from it, or wrap it in useMemo (React Compiler would do this automatically).",
+          "why": "memo only skips a render when every prop is the same object as last time. `labels` looks the same, but it's a new object on every render, so FeatureMatrix and everything below it re-renders for nothing.",
+          "line": "`labels={{ included: 'Included', missing: 'Not included' }}` at PricingPage.tsx:26.",
+          "fix": "It uses nothing from the component, so move it outside, to the top of the file: `const LABELS = { included: 'Included', missing: 'Not included' };`, then pass `labels={LABELS}`. FeatureMatrix then gets the same object on every render. Wrapping it in useMemo also works: `const labels = useMemo(() => ({ included: 'Included', missing: 'Not included' }), []);`. React Compiler would do this automatically."
+        },
+        "rank": 1
+      },
+      {
+        "id": "state-in-effect:PricingPage:setDiscount",
+        "rule": "state-in-effect",
+        "component": "PricingPage",
+        "hook": {
+          "index": 1,
+          "state": "discount",
+          "setter": "setDiscount",
+          "owner": "PricingPage"
+        },
+        "location": {
+          "file": "PricingPage.tsx",
+          "line": 8,
+          "snippet": "useEffect(() => { setDiscount(billing === 'yearly' ? 0.2 : 0); }, [billing])"
+        },
+        "stepsAffected": 4,
+        "steps": 4,
+        "commits": [
+          2,
+          4,
+          6,
+          8
+        ],
+        "msPerStep": 14,
+        "msPerAffectedStep": 14,
+        "rendersPerStep": 85,
+        "rendersPerAffectedStep": 85,
+        "extraUpdatesPerStep": 1,
+        "fix": {
+          "kind": "compute-in-render",
+          "compilerFixes": false
+        },
+        "texts": {
+          "summary": "PricingPage sets state inside useEffect (PricingPage.tsx:8): one extra update per click (14 ms). Fix: compute discount during render: `const discount = billing === 'yearly' ? 0.2 : 0;`. React Compiler doesn't fix this one. Its extra update also re-renders FeatureMatrix (finding 1) for nothing, so part of its time is the same waste: don't add the two up.",
+          "why": "PricingPage copies a value into state inside useEffect. React renders PricingPage, runs the effect, and then has to render it again with the new discount: two updates where one would do.",
+          "line": "`useEffect(() => { setDiscount(billing === 'yearly' ? 0.2 : 0); }, [billing])` at PricingPage.tsx:8 (it calls `setDiscount` on line 9).",
+          "fix": "Compute `discount` during render instead: `const discount = billing === 'yearly' ? 0.2 : 0;`, and remove its useState and the useEffect. React Compiler doesn't fix this one."
+        },
+        "rank": 2
+      }
+    ],
+    "keystroke": {
+      "unit": "click",
+      "label": "Clicking 4 times",
+      "caption": "clicked 4 times in PricingPage",
+      "steps": 4,
+      "msPerStep": 27.55,
+      "rendersPerStep": 170,
+      "frameBudgetMs": 16.7,
+      "overBudget": true,
+      "wastedMsPerStep": 27.35,
+      "restMsPerStep": 0.2,
+      "headline": "Every click re-renders 81 components that didn't change, twice: FeatureMatrix and 80 × FeatureRow.",
+      "subline": "Each click takes 27.6 ms. A click feels instant when an update fits in one screen refresh (about 16.7 ms), so this feels laggy.",
+      "tree": [
+        {
+          "name": "PricingPage",
+          "depth": 0,
+          "label": "state-origin",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 13.6
+        },
+        {
+          "name": "PlanCard",
+          "depth": 1,
+          "label": "needed",
+          "memo": true,
+          "count": 3,
+          "below": {},
+          "ms": 0
+        },
+        {
+          "name": "FeatureMatrix",
+          "depth": 1,
+          "label": "memo-broken",
+          "memo": true,
+          "count": 1,
+          "below": {
+            "FeatureRow": 80
+          },
+          "ms": 13.5
+        }
+      ]
+    }
+  }
+}

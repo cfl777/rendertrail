@@ -63,7 +63,7 @@ export function formatAnalysis(input: TextInput): string {
     const shown = findings.slice(0, ANALYZER.maxFindings);
     if (shown.length === 0) {
       lines.push(
-        `No problem passed the thresholds: no memo component re-rendered with only unchanged props for ${ANALYZER.unstablePropMinMsPerStep} ms or more per ${k.unit}, ` +
+        `No main problem found: no memo component re-rendered with only unchanged props for ${ANALYZER.unstablePropMinMsPerStep} ms or more per ${k.unit}, ` +
           `and no component set state inside an effect on at least half of the ${k.unit}s.`,
         `Raw cost per ${k.unit} (median of ${plural(k.steps, k.unit)}): ${msText(k.msPerStep)}, ${rounded(k.rendersPerStep)} component renders.`,
       );

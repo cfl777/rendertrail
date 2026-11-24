@@ -19,5 +19,17 @@
       },
       "inputMedianMsRange": [2.5, 200]
     }
+  },
+  "findings": {
+    "$comment": "Machine-readable copy of EXPECTED.md's \"Findings the analyzer must report\" and \"Must NOT be reported\", checked by test/golden/analyzer.golden.test.ts (and on the saved traces by test/analyzer-fixtures.test.ts). `report` lists every finding in rank order (exactly these, nothing else). A `mustNotReport` entry matches a finding when all its fields match: component, prop, setter, hookOwner, file, or commit (a commit index the finding includes). `comparison` records `baseline`, then `fixed` sent under the baseline's entry path with the first run's id as baselineRunId, and lists finding ids.",
+    "variants": {
+      "Storefront.tsx": {
+        "report": [],
+        "mustNotReport": [
+          { "component": "ProductGrid" }, { "prop": "layout" }, { "file": "Storefront.tsx" },
+          { "component": "ProductCard" }, { "component": "PromoBanner" }, { "component": "Storefront" }
+        ]
+      }
+    }
   }
 }

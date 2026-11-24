@@ -258,11 +258,14 @@ export function barScale(values: readonly number[], budgetMs: number): BarScale 
 
 /**
  * The ms shown on a tree row. Only rows that re-rendered for nothing behind memo get one, and the
- * top finding's row shows the wasted time from the time bar, so the card's numbers agree.
+ * top finding's row shows the wasted time from the time bar, so the card's numbers agree. The tree
+ * shows one update; when the top finding happens in more than one update per step (a follow-up
+ * update re-renders it again), the bar's time covers all of them, so the row keeps its own time.
  */
 export function treeRowMs(row: KeystrokeView['tree'][number], k: KeystrokeView, top: Finding | undefined): number | null {
   if (row.label !== 'memo-broken') return null;
-  if (top?.rule === 'unstable-prop' && top.component === row.name && k.wastedMsPerStep > 0) return k.wastedMsPerStep;
+  const oncePerStep = top !== undefined && new Set(top.commits).size <= top.stepsAffected;
+  if (top?.rule === 'unstable-prop' && top.component === row.name && k.wastedMsPerStep > 0 && oncePerStep) return k.wastedMsPerStep;
   return row.ms >= 0.05 ? row.ms : null;
 }
 

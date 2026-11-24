@@ -5,6 +5,8 @@ A golden test for rule 2 driven by clicks, with a legitimate look-alike. A three
 Verified on 2026-11-09 with the Phase 1 recorder on React 19.3.1 and 18.3.1. Both versions gave identical commit counts, identical across 3 runs each.
 Numbers produced by the recorder; the owner still checks each finding by hand in React DevTools (HANDOFF §9 Phase 2).
 
+**Changed on 2026-11-23, approved by the owner that day:** `total` now starts at the cart's total (`useState(() => items.reduce(...))`, `CartSummary.tsx:27`) instead of 0. Before, the mount gave 15 or 16 commits on React 18 depending on where its Scheduler ended a 5 ms slice: the effect's `setTotal(100)` and the first quote (null → 0 for a total of 0) batched or not. Now the effect sets the value it already has, React bails out, and the mount has exactly one follow-up on both versions. The clicks, the rule-2 finding and the fixed variant are unchanged; commits after mount moved down by one. Re-verified with 30 recordings (90 runs) on each of React 19.3.1 and 18.3.1: always 14 commits.
+
 ## The interaction (`test.json`)
 
 Click "Add one Yoga mat" twice, "Remove one Foam roller" once and "Add one Resistance band" once, waiting 150 ms after each click. `quoteShipping` returns a resolved promise, so each quote lands one microtask after the effect that asked for it.
@@ -14,15 +16,14 @@ Click "Add one Yoga mat" twice, "Remove one Foam roller" once and "Add one Resis
 | Commit | Trigger | What renders |
 |---|---|---|
 | 0 | mount | Everything: Cart, CartLine ×3, CartSummary |
-| 1 | follow-up (after mount) | CartSummary only: `total` (hook #0) 0 → 100 and `quote` (hook #2) null → 0, batched |
-| 2 | follow-up (after mount) | CartSummary only: `quote` (hook #2) 0 → 5 |
-| 3, 6, 9, 12 | input (one per click) | Cart, CartLine ×3, CartSummary (`items` changed; it still shows the **old** total) |
-| 4, 7, 10, 13 | follow-up (right after each click) | CartSummary only: `total` (hook #0) changes, 100 → 139 → 178 → 153.5 → 165.5 |
-| 5, 8, 11, 14 | follow-up (one microtask later) | CartSummary only: `quote` (hook #2) changes, 5 → 6.95 → 8.9 → 7.68 → 8.28 |
+| 1 | follow-up (after mount) | CartSummary only: `quote` (hook #2) null → 5. (`total` already starts at 100, so the effect's `setTotal(100)` changes nothing.) |
+| 2, 5, 8, 11 | input (one per click) | Cart, CartLine ×3, CartSummary (`items` changed; it still shows the **old** total) |
+| 3, 6, 9, 12 | follow-up (right after each click) | CartSummary only: `total` (hook #0) changes, 100 → 139 → 178 → 153.5 → 165.5 |
+| 4, 7, 10, 13 | follow-up (one microtask later) | CartSummary only: `quote` (hook #2) changes, 5 → 6.95 → 8.9 → 7.68 → 8.28 |
 
-Renders after mount: Cart 4, CartLine 12, CartSummary 14.
+Renders after mount: Cart 4, CartLine 12, CartSummary 13.
 
-The trigger heuristic occasionally labels one of these follow-up commits `later` (seen once in 9 React 19 runs, on commit 4); only "not input" is asserted for them.
+The trigger heuristic occasionally labels one of these follow-up commits `later` (seen once in 9 React 19 runs, on the first click's `total` commit); only "not input" is asserted for them.
 
 **After the fix** (`Cart.fixed.tsx`, which imports `CartSummary.fixed.tsx`: `const total = items.reduce(...)` during render): 10 commits. Mount, then one follow-up (`quote` null → 5); then per click an input commit (Cart, CartLine ×3, CartSummary) and one follow-up (CartSummary, the quote). Commits per click drop from 3 to 2, not to 1. Renders after mount: Cart 4, CartLine 12, CartSummary 9.
 
@@ -30,8 +31,8 @@ The trigger heuristic occasionally labels one of these follow-up commits `later`
 
 On the Windows 11 dev machine used for verification (installed Chrome, headless):
 
-- Input commits: median 0.45–0.5 ms before and after the fix (single commits 0.3–0.7 ms).
-- Follow-up commits: 0.3–0.7 ms each. Mount: 1.9–3.4 ms.
+- Input commits: median 0.45–0.6 ms before and after the fix (single commits 0.3–0.7 ms).
+- Follow-up commits: 0.3–0.8 ms each. Mount: 1.9–3.4 ms.
 
 `CartSummary` busy-waits 0.3 ms on purpose, so each extra commit costs real time. Chrome's timer resolution here is about 0.1 ms, so treat differences smaller than that as noise.
 
@@ -41,7 +42,7 @@ On the Windows 11 dev machine used for verification (installed Chrome, headless)
 
 ## Must NOT be reported
 
-- **`useShippingQuote`'s `setQuote`** (`CartSummary.tsx:17`) and its commits 5, 8, 11 and 14. At runtime they look like rule 2: a follow-up commit with no input before it, CartSummary's own state changed, and CartSummary rendered in the previous commit. The source check must reject it: the setter runs inside `.then`, not synchronously in the effect. CartSummary's hook order is `useState(total)` #0, `useEffect` #1, then, through the custom hook, `useState(quote)` #2 and `useEffect` #3. Commits 4, 7, 10 and 13 change #0 (report it); commits 5, 8, 11 and 14 change #2 (ignore it). The "only synchronous setter" fallback must **not** fire for #2, because the mapping is unambiguous; otherwise those commits would be counted as rule-2 cost under `setTotal`.
-- **The mount follow-ups (commits 1 and 2)**: mount isn't a step. Commit 1 changes #0 and #2 together; it is the same `setTotal` problem, but rule 2 is measured per step.
+- **`useShippingQuote`'s `setQuote`** (`CartSummary.tsx:17`) and its commits 4, 7, 10 and 13. At runtime they look like rule 2: a follow-up commit with no input before it, CartSummary's own state changed, and CartSummary rendered in the previous commit. The source check must reject it: the setter runs inside `.then`, not synchronously in the effect. CartSummary's hook order is `useState(total)` #0, `useEffect` #1, then, through the custom hook, `useState(quote)` #2 and `useEffect` #3. Commits 3, 6, 9 and 12 change #0 (report it); commits 4, 7, 10 and 13 change #2 (ignore it). The "only synchronous setter" fallback must **not** fire for #2, because the mapping is unambiguous; otherwise those commits would be counted as rule-2 cost under `setTotal`.
+- **The mount follow-up (commit 1)**: mount isn't a step, and it only changes the quote (#2).
 - **Rule 1**: nothing is memoised. `CartLine` gets a new `onChange` function every render, but without `memo` that isn't rule 1.
 - **CartLine renders**: each input commit re-renders all 3 lines though only one line's `item` changed. They are cheap (well under 1 ms) and not memoised, so no finding.

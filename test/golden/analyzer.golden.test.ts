@@ -1,126 +1,105 @@
 /**
- * Golden test for the analyzer: records every fixture whose expected.json has a `findings` section
- * through the real recorder (headless Chrome), analyzes it and checks the findings against that
- * section (a copy of EXPECTED.md's "must report" and "must NOT be reported"). Then the full tool
- * runs twice through inspectRender: the baseline variant, and the fixed variant sent under the
- * baseline's entry path with baselineRunId, as Claude would after a fix. Runs are stored in a
- * temporary folder, never the real home.
+ * Golden test for the analyzer: records every fixture through the real recorder (headless Chrome),
+ * analyzes it and checks the findings against the `findings` section of its expected.json (a copy
+ * of EXPECTED.md's "must report" and "must NOT be reported"). Every known fixture must have one, so
+ * none drops out silently. Then, for each fixture with a fixed variant, the full tool runs twice
+ * through inspectRender: the baseline variant, and the fixed variant sent under the baseline's entry
+ * path with baselineRunId, as Claude would after a fix. Runs are stored in a temporary folder, never
+ * the real home.
  *
  * `RT_SAVE_TRACES=1 npm run test:golden` also rewrites the analyzer's unit-test inputs in
  * test/fixtures/traces/ (<fixture>.<variant>.json: the summary and the first run's trace).
  */
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { analyze } from '../../src/analyzer/index.js';
+import { formatAnalysis } from '../../src/analyzer/text.js';
 import { recordRender } from '../../src/recorder/index.js';
 import { inspectRender } from '../../src/server/inspect-render.js';
-import { InspectRenderInputSchema, type Finding, type InspectRenderOutput } from '../../src/shared/types.js';
+import { InspectRenderInputSchema, type InspectRenderOutput } from '../../src/shared/types.js';
 import { listRunIds, loadRun } from '../../src/store/runs.js';
-
-const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const FIXTURES = path.join(ROOT, 'fixtures');
-const TRACES = path.join(ROOT, 'test', 'fixtures', 'traces');
-
-interface ExpectedFinding {
-  rule: string;
-  component: string;
-  prop?: string;
-  setter?: string;
-  location?: string;
-  fix?: string;
-  compilerFixes?: boolean;
-  stepsAffected?: number;
-  steps?: number;
-}
-interface MustNot {
-  component?: string;
-  prop?: string;
-  setter?: string;
-  hookOwner?: string;
-  file?: string;
-  commit?: number;
-}
-interface FindingsSection {
-  variants: Record<string, { report: ExpectedFinding[]; mustNotReport: MustNot[] }>;
-  comparison?: { baseline: string; fixed: string; resolved: string[]; stillThere: string[]; new: string[] };
-}
-
-function view(f: Finding): Required<Omit<ExpectedFinding, 'prop' | 'setter'>> & { prop?: string; setter?: string } {
-  return {
-    rule: f.rule,
-    component: f.component,
-    ...(f.prop ? { prop: f.prop.name } : {}),
-    ...(f.hook ? { setter: f.hook.setter } : {}),
-    location: f.location ? `${f.location.file}:${f.location.line}` : '',
-    fix: f.fix.kind,
-    compilerFixes: f.fix.compilerFixes,
-    stepsAffected: f.stepsAffected,
-    steps: f.steps,
-  };
-}
-
-function matches(f: Finding, m: MustNot): boolean {
-  return (
-    (m.component === undefined || f.component === m.component) &&
-    (m.prop === undefined || f.prop?.name === m.prop) &&
-    (m.setter === undefined || f.hook?.setter === m.setter) &&
-    (m.hookOwner === undefined || f.hook?.owner === m.hookOwner) &&
-    (m.file === undefined || f.location?.file === m.file) &&
-    (m.commit === undefined || f.commits.includes(m.commit))
-  );
-}
-
-async function fixturesWithFindings() {
-  const found: { name: string; dir: string; section: FindingsSection }[] = [];
-  for (const name of (await readdir(FIXTURES)).sort()) {
-    const file = path.join(FIXTURES, name, 'expected.json');
-    if (!existsSync(file)) continue;
-    const expected = JSON.parse(await readFile(file, 'utf8')) as { findings?: FindingsSection };
-    if (expected.findings) found.push({ name, dir: path.join(FIXTURES, name), section: expected.findings });
-  }
-  return found;
-}
-
-async function load(dir: string) {
-  const names = (await readdir(dir)).filter((n) => /\.[cm]?[jt]sx?$/.test(n));
-  const files = await Promise.all(names.map(async (n) => ({ path: n, content: await readFile(path.join(dir, n), 'utf8') })));
-  const test = JSON.parse(await readFile(path.join(dir, 'test.json'), 'utf8')) as Record<string, unknown>;
-  return { files, test };
-}
+import { comparisonHeadline } from '../../ui/src/model.js';
+import {
+  FIXTURES_DIR,
+  KNOWN_FIXTURES,
+  findingView,
+  fixtureExpected,
+  fixtureFiles,
+  fixtureTest,
+  matchesMustNot,
+  traceFile,
+} from '../helpers/fixtures.js';
 
 const runsDir = await mkdtemp(path.join(os.tmpdir(), 'rt-golden-runs-'));
 afterAll(async () => {
   await rm(runsDir, { recursive: true, force: true });
 });
 
-describe('analyzer golden test', async () => {
-  const fixtures = await fixturesWithFindings();
+const names = (await readdir(FIXTURES_DIR, { withFileTypes: true }))
+  .filter((d) => d.isDirectory() && existsSync(path.join(FIXTURES_DIR, d.name, 'expected.json')))
+  .map((d) => d.name)
+  .sort();
 
-  for (const { name, dir, section } of fixtures) {
-    const { files, test } = await load(dir);
+describe('analyzer golden test', () => {
+  it('covers every known fixture, each with a findings section for every variant', () => {
+    expect(names).toEqual(KNOWN_FIXTURES);
+    for (const name of names) {
+      const expected = fixtureExpected(name);
+      const entries = [fixtureTest(name).entry, ...(expected.fixedEntry ? [expected.fixedEntry] : [])];
+      expect(expected.findings, `fixtures/${name}/expected.json has no findings section`).toBeDefined();
+      expect(Object.keys(expected.findings!.variants).sort(), name).toEqual(entries.sort());
+      expect(Boolean(expected.findings!.comparison), `${name}: a comparison exactly when there is a fixed variant`).toBe(Boolean(expected.fixedEntry));
+    }
+  });
+
+  for (const name of names) {
+    const section = fixtureExpected(name).findings;
+    if (!section) continue; // the coverage test above fails instead
+    const files = fixtureFiles(name);
+    const test = fixtureTest(name);
 
     for (const [entry, want] of Object.entries(section.variants)) {
       it(`${name}/${entry}: findings match EXPECTED.md`, async () => {
         const input = InspectRenderInputSchema.parse({ ...test, files, entry });
-        const result = await recordRender(input);
-        if (!result.ok) throw new Error(`Recording failed: ${JSON.stringify(result.error, null, 2)}`);
+        // `commit` entries below are indexes into EXPECTED.md's commit table, so they only mean
+        // something when run 1 recorded that many updates. On React 18 one run has occasionally
+        // recorded one more update than EXPECTED.md lists (cause not investigated yet): record once
+        // more, then fail loudly rather than skip those checks.
+        const wantCount = fixtureExpected(name).variants?.[entry]?.commitCount;
+        const record = async () => {
+          const r = await recordRender(input);
+          if (!r.ok) throw new Error(`Recording failed: ${JSON.stringify(r.error, null, 2)}`);
+          return r;
+        };
+        let result = await record();
+        if (result.traces[0]!.commits.length !== wantCount) {
+          console.log(`${name}/${entry}: run 1 recorded ${result.traces[0]!.commits.length} updates, EXPECTED.md has ${wantCount}; recording again`);
+          result = await record();
+        }
+        const n = result.traces[0]!.commits.length;
+        expect(n === wantCount, `run 1 recorded ${n} updates, EXPECTED.md has ${wantCount}: recorder flake`).toBe(true);
         if (process.env.RT_SAVE_TRACES) {
-          const variant = entry.replace(/\.[cm]?[jt]sx?$/, '');
-          await writeFile(path.join(TRACES, `${name}.${variant}.json`), `${JSON.stringify({ summary: result.summary, traces: result.traces.slice(0, 1) })}\n`);
+          await writeFile(traceFile(name, entry), `${JSON.stringify({ summary: result.summary, traces: result.traces.slice(0, 1) })}\n`);
         }
         const analysis = await analyze({ summary: result.summary, traces: result.traces, files });
         console.log(
           `${name}/${entry}: ${analysis.keystroke.msPerStep} ms per ${analysis.keystroke.unit}; findings: ` +
             (analysis.allFindings.map((f) => `${f.id} (${f.msPerStep} ms/step, ${f.stepsAffected}/${f.steps} steps)`).join('; ') || 'none'),
         );
-        expect(analysis.allFindings.map(view)).toEqual(want.report.map((w) => expect.objectContaining(w)));
+        expect(analysis.allFindings.map(findingView)).toEqual(want.report.map((w) => expect.objectContaining(w)));
         expect(analysis.allFindings).toHaveLength(want.report.length);
         for (const m of want.mustNotReport) {
-          expect(analysis.allFindings.filter((f) => matches(f, m)), `must not report ${JSON.stringify(m)}`).toEqual([]);
+          expect(analysis.allFindings.filter((f) => matchesMustNot(f, m)), `must not report ${JSON.stringify(m)}`).toEqual([]);
+        }
+        if (want.report.length === 0) {
+          // "No main problem was found": the card's no-findings state and the text result say so.
+          expect(analysis.findings).toEqual([]);
+          expect(analysis.keystroke.headline).toMatch(/^Nothing to fix: each \w+ takes [\d.]+ ms\.$/);
+          const text = formatAnalysis({ summary: result.summary, steps: analysis.steps, findings: analysis.allFindings, keystroke: analysis.keystroke, runId: 'r_golden' });
+          expect(text).toContain('No main problem found: ');
         }
       });
     }
@@ -156,6 +135,10 @@ describe('analyzer golden test', async () => {
       expect(c.changedFiles).toEqual([cmp.baseline, cmp.fixed].sort());
       expect(c.baselineFiles.map((f) => f.path).sort()).toEqual([cmp.baseline, cmp.fixed].sort());
       expect(text).toContain(`Compared with run ${first.run.id}`);
+      // The card's headline (ui/src/model.ts): "Fixed." when the baseline's top finding is resolved and nothing is new.
+      const top = section.variants[cmp.baseline]!.report[0];
+      const topId = top ? `${top.rule}:${top.component}:${top.prop ?? top.setter}` : undefined;
+      expect(comparisonHeadline(c, second)).toMatch(topId && cmp.resolved.includes(topId) && cmp.new.length === 0 ? /^Fixed\. / : /^(Partly fixed|Faster|Not fixed yet)\. /);
       expect(await listRunIds(runsDir)).toEqual(expect.arrayContaining([first.run.id, second.run.id]));
     });
   }

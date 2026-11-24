@@ -1,7 +1,8 @@
 /**
  * Card harness data: real inspect_render results (structuredContent plus the tool input the host
- * sends) built from the saved laggy-search traces by the real analyzer and comparison. Written to
- * ui/dev/results/ by `npm run card:results`; test/card-results.test.ts fails when they drift.
+ * sends) built from the saved laggy-search traces by the real analyzer and comparison, plus one
+ * unfixed result per other golden fixture (`fixture-<name>`). Written to ui/dev/results/ by
+ * `npm run card:results`; test/card-results.test.ts fails when they drift.
  *
  * Every result runs through analyze() and compareRuns(). A few are derived from the saved traces
  * to reach states the fixture can't produce on its own; each says how in `note`.
@@ -21,6 +22,7 @@ import {
 } from '../../src/shared/types.js';
 import { compareRuns, missingBaseline } from '../../src/store/compare.js';
 import type { CardResult } from '../../ui/dev/result-types.js';
+import { fixtureFiles, fixtureTest, savedFixtureTrace } from './fixtures.js';
 import { laggyFiles, savedTrace } from './laggy.js';
 
 export type { CardResult };
@@ -119,6 +121,36 @@ const ERROR: RecordError = {
   stubs: ['./api (imported by SearchPage.tsx)', '@acme/ui/Spinner (imported by ResultsList.tsx)'],
 };
 
+/** The other golden fixtures, unfixed, as Claude would send them: their saved trace, no `.fixed` files. */
+const OTHER_FIXTURES: { name: string; id: string }[] = [
+  { name: 'cart-summary', id: 'r_c4rt5m' },
+  { name: 'pricing-toggle', id: 'r_pr1c3t' },
+  { name: 'theme-storefront', id: 'r_th3m3s' },
+  { name: 'todo-toggle', id: 'r_t0d0tg' },
+  { name: 'user-table', id: 'r_us3rtb' },
+];
+
+async function fixtureResult(name: string, id: string): Promise<CardResult> {
+  const entry = fixtureTest(name).entry;
+  const saved = savedFixtureTrace(name, entry);
+  const files = fixtureFiles(name)
+    .filter((f) => !f.path.includes('.fixed'))
+    .map((f) => ({ path: f.path, content: f.content.replace(/\r\n/g, '\n') }));
+  const a = await analyze({ summary: saved.summary, traces: saved.traces, files });
+  const count = a.findings.length;
+  return {
+    title: `Fixture: ${name}, ${count === 0 ? 'no findings' : count === 1 ? '1 finding' : `${count} findings`}`,
+    note: `fixtures/${name}, unfixed, from its saved trace (test/fixtures/traces). See its EXPECTED.md.`,
+    input: { files, entry, exportName: 'default', steps: saved.summary.steps },
+    output: {
+      schemaVersion: SCHEMA_VERSION,
+      run: { id, createdAt: CREATED_AT, summary: saved.summary, steps: a.steps },
+      findings: a.findings,
+      keystroke: a.keystroke,
+    },
+  };
+}
+
 export async function buildCardResults(): Promise<Record<string, CardResult>> {
   const unfixed = await run('r_8f2k1a', 'SearchPage', unfixedFiles());
   const fixed = await run('r_q7m3cd', 'SearchPage.fixed', fixedFiles());
@@ -137,6 +169,9 @@ export async function buildCardResults(): Promise<Record<string, CardResult>> {
       stubs: ['./analytics (imported by SearchPage.tsx)'],
     };
   });
+
+  const fixtures: Record<string, CardResult> = {};
+  for (const { name, id } of OTHER_FIXTURES) fixtures[`fixture-${name}`] = await fixtureResult(name, id);
 
   return {
     unfixed: { title: 'Answer: laggy search, 2 findings', ...pick(unfixed) },
@@ -178,6 +213,7 @@ export async function buildCardResults(): Promise<Record<string, CardResult>> {
       input: inputFor(unfixedFiles(), savedTrace('SearchPage').summary),
       output: { schemaVersion: SCHEMA_VERSION, error: ERROR },
     },
+    ...fixtures,
   };
 }
 

@@ -28,7 +28,11 @@ function labelOf(r: RecordedCommit['rendered'][number]): TreeLabel {
   return 'nothing-changed';
 }
 
-export function buildTree(trace: RecordedTrace, commitIndex: number, timing: Timing): TreeRow[] {
+/**
+ * `focus`: the component the top finding is about when it's rule 2. Its row is kept first after the
+ * origin, so the card can show the extra update it causes even in a tree cut to 5 rows.
+ */
+export function buildTree(trace: RecordedTrace, commitIndex: number, timing: Timing, focus?: string): TreeRow[] {
   const commit = trace.commits[commitIndex];
   const mount = trace.commits[0];
   if (!commit) return [];
@@ -66,7 +70,7 @@ export function buildTree(trace: RecordedTrace, commitIndex: number, timing: Tim
       below,
       ms: timing.componentMs(commitIndex, i),
       order: i,
-      priority: passThrough ? PASS_THROUGH_PRIORITY : PRIORITY[label],
+      priority: r.name === focus ? 0.5 : passThrough ? PASS_THROUGH_PRIORITY : PRIORITY[label],
     });
   });
 

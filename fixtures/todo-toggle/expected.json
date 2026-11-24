@@ -39,5 +39,32 @@
       },
       "inputMedianMsRange": [0, 3]
     }
+  },
+  "findings": {
+    "$comment": "Machine-readable copy of EXPECTED.md's \"Findings the analyzer must report\" and \"Must NOT be reported\", checked by test/golden/analyzer.golden.test.ts (and on the saved traces by test/analyzer-fixtures.test.ts). `report` lists every finding in rank order (exactly these, nothing else). A `mustNotReport` entry matches a finding when all its fields match: component, prop, setter, hookOwner, file, or commit (a commit index the finding includes). `comparison` records `baseline`, then `fixed` sent under the baseline's entry path with the first run's id as baselineRunId, and lists finding ids. The fixed variant's empty `report` and the `comparison` are inferred from EXPECTED.md's \"After the fix\" section, which lists no findings of its own: nothing must be reported once the fix is in.",
+    "variants": {
+      "TodoApp.tsx": {
+        "report": [
+          { "rule": "unstable-prop", "component": "TodoItem", "prop": "onToggle", "location": "TodoApp.tsx:29", "fix": "useCallback", "compilerFixes": true, "stepsAffected": 6, "steps": 6 }
+        ],
+        "mustNotReport": [
+          { "prop": "onChange" }, { "file": "TodoItem.tsx" }, { "component": "TodoFooter" }, { "prop": "remaining" },
+          { "component": "TodoApp" }, { "setter": "setDraft" }, { "setter": "setTodos" }
+        ]
+      },
+      "TodoApp.fixed.tsx": {
+        "report": [],
+        "mustNotReport": [
+          { "component": "TodoItem" }, { "prop": "onChange" }, { "component": "TodoFooter" }, { "component": "TodoApp" }
+        ]
+      }
+    },
+    "comparison": {
+      "baseline": "TodoApp.tsx",
+      "fixed": "TodoApp.fixed.tsx",
+      "resolved": ["unstable-prop:TodoItem:onToggle"],
+      "stillThere": [],
+      "new": []
+    }
   }
 }

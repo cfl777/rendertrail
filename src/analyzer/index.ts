@@ -7,7 +7,7 @@
 import type { Finding, InteractionStep, KeystrokeView, RecordedTrace, TraceSummary } from '../shared/types.js';
 import { matchingRuns, median } from '../recorder/summarize.js';
 import { ANALYZER, RULE_ORDER } from './constants.js';
-import { isMemoBreak, stateInEffectCandidates, unstablePropCandidates, type Candidate, type Timing } from './rules.js';
+import { isMemoBreak, repeatText, stateInEffectCandidates, unstablePropCandidates, wasteShape, type Candidate, type Timing, type WasteShape } from './rules.js';
 import { loadTypeScript, parseFiles, reachableFrom } from './source.js';
 import { groupSteps, round } from './steps.js';
 import { buildTree } from './tree.js';
@@ -78,6 +78,24 @@ export function rank(candidates: readonly Candidate[]): Finding[] {
     .map((c, i) => ({ ...c, rank: i + 1 }));
 }
 
+/**
+ * A rule 2 finding whose extra updates also re-render a listed rule 1 component for nothing: the
+ * two costs overlap (pricing-toggle), so its summary says so and nobody adds them up. Only findings
+ * that are listed (the top ANALYZER.maxFindings) are named, by their number in the list.
+ */
+export function noteOverlaps(findings: Finding[]): Finding[] {
+  return findings.map((f) => {
+    if (f.rule !== 'state-in-effect') return f;
+    const overlapping = findings.filter(
+      (o) => o.rule === 'unstable-prop' && o.rank <= ANALYZER.maxFindings && o.commits.some((c) => f.commits.includes(c)),
+    );
+    if (overlapping.length === 0) return f;
+    const names = overlapping.map((o) => `${o.component} (finding ${o.rank})`).join(', ');
+    const note = ` Its extra update also re-renders ${names} for nothing, so part of its time is the same waste: don't add the two up.`;
+    return { ...f, texts: { ...f.texts, summary: `${f.texts.summary}${note}` } };
+  });
+}
+
 function wasteInStep(trace: RecordedTrace, step: InteractionStep, component: string, timing: Timing): number {
   let ms = 0;
   for (const ci of step.commits) {
@@ -93,7 +111,7 @@ function medianStep(steps: readonly InteractionStep[]): InteractionStep | undefi
   return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
-function headlineFor(top: Finding | undefined, unit: UnitWords, msPerStep: number, overBudget: boolean, stepCount: number): string {
+function headlineFor(top: Finding | undefined, shape: WasteShape | null, unit: UnitWords, msPerStep: number, overBudget: boolean, stepCount: number): string {
   const one = unit.one;
   const every = top && top.stepsAffected < top.steps ? `On ${top.stepsAffected} of ${top.steps} ${unit.many}, it` : unit.every;
   if (stepCount === 0) return 'No updates after input were recorded, so there is nothing to measure per step.';
@@ -102,13 +120,18 @@ function headlineFor(top: Finding | undefined, unit: UnitWords, msPerStep: numbe
       ? `Each ${one} takes ${msText(msPerStep)}, but no single cause stands out.`
       : `Nothing to fix: each ${one} takes ${msText(msPerStep)}.`;
   }
-  if (top.rule === 'unstable-prop') {
-    const below = Object.entries(top.below ?? {}).filter(([, k]) => k >= 1);
-    const total = Math.round(top.rendersPerAffectedStep);
-    const parts = below.map(([name, k]) => `${Math.round(k)} × ${name}`).join(', ');
-    return below.length
-      ? `${every} re-renders ${total} components that didn't change: ${top.component} and ${parts}.`
-      : `${every} re-renders ${top.component}, which didn't change.`;
+  if (top.rule === 'unstable-prop' && shape) {
+    // One update's components, as in the card's tree; "twice" when a follow-up update repeats it.
+    const instances = Math.max(1, Math.round(shape.instances));
+    const below = Object.entries(shape.below).filter(([, k]) => k >= 1);
+    const total = instances + below.reduce((sum, [, k]) => sum + Math.round(k), 0);
+    const self = instances > 1 ? `${instances} × ${top.component}` : top.component;
+    const parts = [self, ...below.map(([name, k]) => `${Math.round(k)} × ${name}`)];
+    const repeat = repeatText(shape.updatesPerStep);
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+    return total > 1
+      ? `${every} re-renders ${total} components that didn't change${repeat ? `, ${repeat}` : ''}: ${list}.`
+      : `${every} re-renders ${top.component}${repeat ? ` ${repeat}` : ''}, which didn't change.`;
   }
   return `${every} causes an extra update: ${top.component} sets state inside an effect.`;
 }
@@ -123,7 +146,7 @@ export async function analyze(input: AnalyzeInput): Promise<Analysis> {
   const files = reachableFrom(parseFiles(input.files), input.summary.entry);
   const ctx = { trace, steps, files, timing, unit };
 
-  const allFindings = rank([...unstablePropCandidates(ctx), ...stateInEffectCandidates(ctx)]);
+  const allFindings = noteOverlaps(rank([...unstablePropCandidates(ctx), ...stateInEffectCandidates(ctx)]));
   const findings = allFindings.slice(0, ANALYZER.maxFindings);
 
   const msPerStep = median(steps.map((s) => s.renderMs));
@@ -136,7 +159,7 @@ export async function analyze(input: AnalyzeInput): Promise<Analysis> {
   const topWaste = findings.find((f) => f.rule === 'unstable-prop');
   const shares = topWaste ? steps.map((s) => (s.renderMs > 0 ? Math.min(1, wasteInStep(trace, s, topWaste.component, timing) / s.renderMs) : 0)) : [];
   const wasted = round(msPerStep * (shares.length ? exactMedian(shares) : 0));
-  const smooth = unit.unit === 'letter' ? 'Typing feels smooth' : unit.unit === 'click' ? 'A click feels instant' : 'An update feels smooth';
+  const smooth = unit.unit === 'letter' ? 'Typing feels smooth' : unit.unit === 'click' ? 'A click feels instant' : 'A step feels instant';
 
   const keystroke: KeystrokeView = {
     unit: unit.unit,
@@ -149,13 +172,13 @@ export async function analyze(input: AnalyzeInput): Promise<Analysis> {
     overBudget,
     wastedMsPerStep: wasted,
     restMsPerStep: round(Math.max(0, msPerStep - wasted)),
-    headline: headlineFor(findings[0], unit, msPerStep, overBudget, steps.length),
+    headline: headlineFor(findings[0], findings[0]?.rule === 'unstable-prop' ? wasteShape(trace, steps, findings[0].component, findings[0].commits) : null, unit, msPerStep, overBudget, steps.length),
     subline:
       steps.length === 0
         ? 'Try an interaction that changes what the component shows, such as typing into an input.'
         : `${unit.each} takes ${msText(msPerStep)}. ${smooth} when an update fits in one screen refresh (about ${ANALYZER.frameBudgetMs} ms), ` +
           `so this ${overBudget ? 'feels laggy' : 'should feel smooth'}.`,
-    tree: typical ? buildTree(trace, typical.commits[0]!, timing) : [],
+    tree: typical ? buildTree(trace, typical.commits[0]!, timing, findings[0]?.rule === 'state-in-effect' ? findings[0].component : undefined) : [],
   };
   return { steps, allFindings, findings, keystroke };
 }

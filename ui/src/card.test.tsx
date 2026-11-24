@@ -470,3 +470,63 @@ describe('tree label copy', () => {
     ]);
   });
 });
+
+describe('the other golden fixtures (ui/dev/results/fixture-*.json)', () => {
+  it('theme-storefront: the no-findings state, with the context renders labelled needed', () => {
+    const { container } = render(<Card state={stateOf('fixture-theme-storefront')} host={host()} />);
+    expect(container.querySelector('[data-state="no-findings"]')).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/^Nothing to fix: each click takes [\d.]+ ms\.$/);
+    const rows = within(screen.getByRole('region', { name: 'What one click does' })).getAllByRole('listitem');
+    expect(rows.map((r) => [r.querySelector('code')?.textContent, r.dataset.label])).toEqual([
+      ['Storefront', 'state-origin'],
+      ['ProductGrid', 'needed'],
+      ['ProductCard', 'needed'],
+      ['PromoBanner', 'skipped'],
+    ]);
+    expect(screen.queryByRole('button', { name: 'Fix it and check' })).toBeNull();
+  });
+
+  it("pricing-toggle: the matrix row shows one update's time, not the bar's two-update waste", () => {
+    render(<Card state={stateOf('fixture-pricing-toggle')} host={host()} />);
+    const out = resultOutput('fixture-pricing-toggle');
+    const row = within(screen.getByRole('region', { name: 'What one click does' }))
+      .getAllByRole('listitem')
+      .find((r) => r.querySelector('code')?.textContent === 'FeatureMatrix')!;
+    expect(row.textContent).toContain('with 80 × FeatureRow');
+    const ms = out.keystroke.tree.find((r) => r.name === 'FeatureMatrix')!.ms;
+    expect(row.querySelector('.row-ms')?.textContent).toBe(`${Math.round(ms * 10) / 10} ms`);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('twice');
+  });
+
+  it('todo-toggle and user-table: steps and clicks are never called keystrokes', () => {
+    for (const name of ['fixture-todo-toggle', 'fixture-user-table', 'fixture-cart-summary']) {
+      const { container } = render(<Card state={stateOf(name)} host={host()} />);
+      expect(container.textContent, name).not.toMatch(/keystroke|letter/i);
+      cleanup();
+    }
+  });
+});
+
+describe('cart-summary: the tree points at the rule 2 component, not at CartLine', () => {
+  it('marks the extra update on CartSummary and mutes the cheap "nothing changed" rows', () => {
+    render(<Card state={stateOf('fixture-cart-summary')} host={host()} />);
+    const rows = within(screen.getByRole('region', { name: 'What one click does' })).getAllByRole('listitem');
+    const byName = (name: string) => rows.filter((r) => r.querySelector('code')?.textContent === name);
+    const summary = byName('CartSummary')[0]!;
+    expect(within(summary).getByTestId('extra-update').textContent).toBe('Then sets its own state in an effect: 1 extra update');
+    for (const line of byName('CartLine')) expect(line.querySelector('.dot-warning')).toBeNull();
+    expect(screen.getAllByTestId('extra-update')).toHaveLength(1);
+  });
+
+  it('leaves trees whose top finding is rule 1 as they were (laggy-search, pricing-toggle)', () => {
+    for (const name of ['unfixed', 'fixture-pricing-toggle']) {
+      const { container } = render(<Card state={stateOf(name)} host={host()} />);
+      expect(container.querySelector('[data-testid="extra-update"]'), name).toBeNull();
+      expect(container.querySelector('[data-label="memo-broken"] .dot-warning'), name).not.toBeNull();
+      cleanup();
+    }
+    render(<Card state={stateOf('unfixed')} host={host()} />);
+    const header = screen.getAllByRole('listitem').find((r) => r.querySelector('code')?.textContent === 'Header')!;
+    expect(header.querySelector('.dot-warning')).not.toBeNull();
+  });
+});

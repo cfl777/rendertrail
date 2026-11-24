@@ -1,0 +1,465 @@
+{
+  "title": "Fixture: todo-toggle, 1 finding",
+  "note": "fixtures/todo-toggle, unfixed, from its saved trace (test/fixtures/traces). See its EXPECTED.md.",
+  "input": {
+    "files": [
+      {
+        "path": "data.ts",
+        "content": "export type Todo = { id: number; title: string; done: boolean };\n\n// 100 todos; every fourth one starts done, so 75 are open.\nexport const TODOS: Todo[] = Array.from({ length: 100 }, (_, i) => ({\n  id: i + 1,\n  title: `Task ${i + 1}`,\n  done: i % 4 === 0,\n}));\n"
+      },
+      {
+        "path": "TodoApp.tsx",
+        "content": "import { useState, type FormEvent } from 'react';\nimport { TODOS } from './data';\nimport { TodoFooter, TodoItem } from './TodoItem';\n\nexport default function TodoApp() {\n  const [todos, setTodos] = useState(TODOS);\n  const [draft, setDraft] = useState('');\n\n  function handleToggle(id: number) {\n    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));\n  }\n\n  function handleAdd(event: FormEvent) {\n    event.preventDefault();\n    setTodos((prev) => [...prev, { id: prev.length + 1, title: draft, done: false }]);\n    setDraft('');\n  }\n\n  const remaining = todos.filter((t) => !t.done).length;\n\n  return (\n    <section>\n      <form onSubmit={handleAdd}>\n        <input aria-label=\"New todo\" value={draft} onChange={(e) => setDraft(e.target.value)} />\n        <button type=\"submit\">Add</button>\n      </form>\n      <ul>\n        {todos.map((todo) => (\n          <TodoItem key={todo.id} todo={todo} onToggle={handleToggle} />\n        ))}\n      </ul>\n      <TodoFooter remaining={remaining} />\n    </section>\n  );\n}\n"
+      },
+      {
+        "path": "TodoItem.tsx",
+        "content": "import { memo } from 'react';\nimport type { Todo } from './data';\n\n// Deliberately slow (about 0.05 ms per item, about 0.1 ms with timer rounding) so wasted renders cost real time.\nfunction busyWait(ms: number) {\n  const end = performance.now() + ms;\n  while (performance.now() < end) {\n    // do nothing\n  }\n}\n\ntype TodoItemProps = {\n  todo: Todo;\n  onToggle: (id: number) => void;\n};\n\nexport const TodoItem = memo(function TodoItem({ todo, onToggle }: TodoItemProps) {\n  busyWait(0.05);\n  return (\n    <li>\n      <input\n        type=\"checkbox\"\n        aria-label={`Toggle ${todo.title}`}\n        checked={todo.done}\n        onChange={() => onToggle(todo.id)}\n      />\n      {todo.title}\n    </li>\n  );\n});\n\nexport const TodoFooter = memo(function TodoFooter({ remaining }: { remaining: number }) {\n  return <footer>{remaining} left</footer>;\n});\n"
+      }
+    ],
+    "entry": "TodoApp.tsx",
+    "exportName": "default",
+    "steps": [
+      {
+        "action": "type",
+        "target": "input[aria-label=\"New todo\"]",
+        "text": "milk",
+        "delayMs": 100
+      },
+      {
+        "action": "wait",
+        "ms": 200
+      },
+      {
+        "action": "click",
+        "target": "input[aria-label=\"Toggle Task 3\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 200
+      },
+      {
+        "action": "click",
+        "target": "button[type=\"submit\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 200
+      }
+    ]
+  },
+  "output": {
+    "schemaVersion": 1,
+    "run": {
+      "id": "r_t0d0tg",
+      "createdAt": "2026-11-11T09:00:00.000Z",
+      "summary": {
+        "entry": "TodoApp.tsx",
+        "exportName": "default",
+        "reactVersion": "19.3.1",
+        "browser": "Chrome 157.0.8103.79",
+        "steps": [
+          {
+            "action": "type",
+            "target": "input[aria-label=\"New todo\"]",
+            "text": "milk",
+            "delayMs": 100
+          },
+          {
+            "action": "wait",
+            "ms": 200
+          },
+          {
+            "action": "click",
+            "target": "input[aria-label=\"Toggle Task 3\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 200
+          },
+          {
+            "action": "click",
+            "target": "button[type=\"submit\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 200
+          }
+        ],
+        "runs": 3,
+        "stable": true,
+        "instability": [],
+        "commitCount": 7,
+        "truncated": false,
+        "commits": [
+          {
+            "index": 0,
+            "trigger": "mount",
+            "renderMs": 15.8,
+            "renderMsRuns": [
+              15.9,
+              15.8,
+              14.8
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "TodoItem",
+                "count": 100,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "TodoFooter",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 1,
+            "trigger": "input",
+            "renderMs": 10.5,
+            "renderMsRuns": [
+              10.8,
+              10.5,
+              10.5
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 \"\" → \"m\""
+                ]
+              },
+              {
+                "name": "TodoItem",
+                "count": 100,
+                "memo": true,
+                "notes": [
+                  "onToggle changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "trigger": "input",
+            "renderMs": 10.3,
+            "renderMsRuns": [
+              10.3,
+              10.5,
+              10.3
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 \"m\" → \"mi\""
+                ]
+              },
+              {
+                "name": "TodoItem",
+                "count": 100,
+                "memo": true,
+                "notes": [
+                  "onToggle changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "trigger": "input",
+            "renderMs": 10.1,
+            "renderMsRuns": [
+              10.1,
+              10.1,
+              10.3
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 \"mi\" → \"mil\""
+                ]
+              },
+              {
+                "name": "TodoItem",
+                "count": 100,
+                "memo": true,
+                "notes": [
+                  "onToggle changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 4,
+            "trigger": "input",
+            "renderMs": 10.3,
+            "renderMsRuns": [
+              10.3,
+              10.2,
+              10.5
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #1 \"mil\" → \"milk\""
+                ]
+              },
+              {
+                "name": "TodoItem",
+                "count": 100,
+                "memo": true,
+                "notes": [
+                  "onToggle changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 5,
+            "trigger": "input",
+            "renderMs": 10.2,
+            "renderMsRuns": [
+              10.2,
+              10.4,
+              10.2
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 [{\"id\":1,\"title\":\"Task 1\",\"done\":true... → [{\"id\":1,\"title\":\"Task 1\",\"done\":true..."
+                ]
+              },
+              {
+                "name": "TodoItem",
+                "count": 100,
+                "memo": true,
+                "notes": [
+                  "onToggle changed (new reference, same value)",
+                  "todo changed"
+                ]
+              },
+              {
+                "name": "TodoFooter",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "remaining changed"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 6,
+            "trigger": "input",
+            "renderMs": 11.1,
+            "renderMsRuns": [
+              11.3,
+              11,
+              11.1
+            ],
+            "rendered": [
+              {
+                "name": "TodoApp",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 [{\"id\":1,\"title\":\"Task 1\",\"done\":true... → [{\"id\":1,\"title\":\"Task 1\",\"done\":true...",
+                  "state #1 \"milk\" → \"\""
+                ]
+              },
+              {
+                "name": "TodoItem",
+                "count": 101,
+                "memo": true,
+                "notes": [
+                  "onToggle changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "TodoFooter",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "remaining changed"
+                ]
+              }
+            ]
+          }
+        ],
+        "rendersAfterMount": {
+          "TodoApp": 6,
+          "TodoItem": 601,
+          "TodoFooter": 2
+        },
+        "timings": {
+          "mountMs": 15.8,
+          "inputCommits": 6,
+          "inputMedianMs": 10.3,
+          "followUpCommits": 0,
+          "laterCommits": 0,
+          "frameBudgetMs": 16.7
+        },
+        "stubs": [],
+        "timerResolutionMs": 0.1,
+        "pageErrors": []
+      },
+      "steps": [
+        {
+          "index": 0,
+          "commits": [
+            1
+          ],
+          "renderMs": 10.5,
+          "renders": 101
+        },
+        {
+          "index": 1,
+          "commits": [
+            2
+          ],
+          "renderMs": 10.3,
+          "renders": 101
+        },
+        {
+          "index": 2,
+          "commits": [
+            3
+          ],
+          "renderMs": 10.1,
+          "renders": 101
+        },
+        {
+          "index": 3,
+          "commits": [
+            4
+          ],
+          "renderMs": 10.3,
+          "renders": 101
+        },
+        {
+          "index": 4,
+          "commits": [
+            5
+          ],
+          "renderMs": 10.2,
+          "renders": 102
+        },
+        {
+          "index": 5,
+          "commits": [
+            6
+          ],
+          "renderMs": 11.1,
+          "renders": 103
+        }
+      ]
+    },
+    "findings": [
+      {
+        "id": "unstable-prop:TodoItem:onToggle",
+        "rule": "unstable-prop",
+        "component": "TodoItem",
+        "prop": {
+          "name": "onToggle",
+          "type": "function"
+        },
+        "location": {
+          "file": "TodoApp.tsx",
+          "line": 29,
+          "snippet": "onToggle={handleToggle}"
+        },
+        "stepsAffected": 6,
+        "steps": 6,
+        "commits": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "msPerStep": 10.23,
+        "msPerAffectedStep": 10.14,
+        "rendersPerStep": 99.83,
+        "rendersPerAffectedStep": 100,
+        "below": {},
+        "fix": {
+          "kind": "useCallback",
+          "compilerFixes": true
+        },
+        "texts": {
+          "summary": "100 × TodoItem (memo) re-render on every step: prop `onToggle` is a new function each render with the same value, passed at TodoApp.tsx:29; `handleToggle` is declared at TodoApp.tsx:9. Wasted: about 10.1 ms per step. Fix: wrap `handleToggle` in useCallback (React Compiler would do this automatically).",
+          "why": "memo only skips a render when every prop is the same object as last time. `onToggle` looks the same, but it's a new function on every render, so TodoItem re-renders for nothing.",
+          "line": "`onToggle={handleToggle}` at TodoApp.tsx:29. `handleToggle` is declared at TodoApp.tsx:9: `function handleToggle(id: number) { … }`.",
+          "fix": "Wrap `handleToggle` (declared at TodoApp.tsx:9) in useCallback so TodoItem gets the same function until its dependencies change: `const handleToggle = useCallback((id: number) => { … }, []);`, keeping its body. The dependency list can stay empty: it only calls `setTodos`, with an updater (`setTodos((prev) => …)`), so it never reads the current state, and a state setter never changes. React Compiler would do this automatically."
+        },
+        "rank": 1
+      }
+    ],
+    "keystroke": {
+      "unit": "step",
+      "label": "The interaction (6 steps with input)",
+      "caption": "typed “milk” and clicked 2 times in TodoApp",
+      "steps": 6,
+      "msPerStep": 10.3,
+      "rendersPerStep": 101,
+      "frameBudgetMs": 16.7,
+      "overBudget": false,
+      "wastedMsPerStep": 10.1,
+      "restMsPerStep": 0.2,
+      "headline": "Every step of the interaction re-renders 100 components that didn't change: 100 × TodoItem.",
+      "subline": "Each step takes 10.3 ms. A step feels instant when an update fits in one screen refresh (about 16.7 ms), so this should feel smooth.",
+      "tree": [
+        {
+          "name": "TodoApp",
+          "depth": 0,
+          "label": "state-origin",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 10.3
+        },
+        {
+          "name": "TodoItem",
+          "depth": 1,
+          "label": "memo-broken",
+          "memo": true,
+          "count": 100,
+          "below": {},
+          "ms": 10.1
+        },
+        {
+          "name": "TodoFooter",
+          "depth": 1,
+          "label": "skipped",
+          "memo": true,
+          "count": 1,
+          "below": {},
+          "ms": 0
+        }
+      ]
+    }
+  }
+}

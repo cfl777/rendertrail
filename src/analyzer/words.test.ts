@@ -15,13 +15,14 @@ describe('interactionLabels', () => {
     expect(none.label).toBe('The interaction (0 steps with input)');
   });
 
-  it('says clicked for clicks and played for a mix', () => {
+  it('says clicked for clicks, and typed and clicked for a mix', () => {
     const clicks: Step[] = [
       { action: 'click', target: 'a' },
       { action: 'click', target: 'b' },
     ];
     expect(interactionLabels(clicks, unitFor(clicks, 0), 0, 'Menu').caption).toBe('clicked 2 times in Menu');
-    const mixed: Step[] = [...clicks, { action: 'type', target: 'i', text: 'x' }];
-    expect(interactionLabels(mixed, unitFor(mixed, 3), 3, 'Form').caption).toBe('played 3 actions in Form');
+    // todo-toggle: typing "milk" then 2 clicks is 6 steps, so "played 3 actions" contradicted the step count.
+    const mixed: Step[] = [{ action: 'type', target: 'i', text: 'x' }, ...clicks];
+    expect(interactionLabels(mixed, unitFor(mixed, 3), 3, 'Form').caption).toBe('typed “x” and clicked 2 times in Form');
   });
 });

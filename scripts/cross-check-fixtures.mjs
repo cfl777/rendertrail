@@ -459,14 +459,14 @@ const CLAIMS = {
     rule2: [{ component: 'CartSummary', allowed: ['CartSummary'] }],
     notReported: [
       {
-        label: "useShippingQuote's setQuote (commits 5, 8, 11, 14)",
+        label: "useShippingQuote's setQuote (commits 4, 7, 10, 13)",
         show: (b, f) =>
-          `Each click is followed by 2 CartSummary-only updates before the fix and 1 after it (see rule 2 line). The one that stays after the fix fits the quote; which state changed can't be seen in counts. Updates 5, 8, 11, 14 before: ${[5, 8, 11, 14].map((i) => (b.commits[i] ? fmtCounts(b.commits[i].renders) : '?')).join(' | ')}; fixed variant other updates: ${f ? otherCommits(f).length : '?'}.`,
+          `Each click is followed by 2 CartSummary-only updates before the fix and 1 after it (see rule 2 line). The one that stays after the fix fits the quote; which state changed can't be seen in counts. Updates 4, 7, 10, 13 before: ${[4, 7, 10, 13].map((i) => (b.commits[i] ? fmtCounts(b.commits[i].renders) : '?')).join(' | ')}; fixed variant other updates: ${f ? otherCommits(f).length : '?'}.`,
       },
       {
-        label: 'Mount follow-ups (commits 1 and 2)',
+        label: 'Mount follow-up (commit 1)',
         show: (b, f) =>
-          `Before the first click: ${b.commits.slice(1).findIndex((c) => c.isInput)} non-input updates (${b.commits.slice(1, 3).map((c) => fmtCounts(c.renders)).join(' | ')}); after the fix: ${f ? f.commits.slice(1).findIndex((c) => c.isInput) : '?'}.`,
+          `Before the first click: ${b.commits.slice(1).findIndex((c) => c.isInput)} non-input updates (${b.commits.slice(1, 2).map((c) => fmtCounts(c.renders)).join(' | ')}); after the fix: ${f ? f.commits.slice(1).findIndex((c) => c.isInput) : '?'}.`,
       },
       { label: 'Rule 1 (nothing is memoised)', show: () => 'Nothing to count: memo is a source fact, not visible in counts.' },
       {

@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { laggyFiles } from '../../test/helpers/laggy.js';
 import {
+  canHoist,
   componentAliases,
   confirmStateInEffect,
   dependenciesOf,
   findFunctions,
   findJsxProp,
+  inComponentBody,
   listHooks,
   loadTypeScript,
   parseFiles,
   reachableFrom,
+  setterCallsIn,
 } from './source.js';
 
 await loadTypeScript();
@@ -238,5 +241,59 @@ describe('findJsxProp', () => {
       'hooks.ts',
       'ui.tsx',
     ]);
+  });
+});
+
+describe('canHoist, inComponentBody, dependenciesOf and setterCallsIn (scope)', () => {
+  const files = parse({
+    'S.tsx': [
+      "import { useState } from 'react';",
+      "const LIMIT = 3;",
+      'export function S({ size }: { size: number }) {',
+      '  const [theme, setTheme] = useState("light");',
+      '  const [n, setN] = useState(0);',
+      '  function helper() { return 1; }',
+      '  const renderRow = (item: { color: string }) => <Row box={{ t: theme }} />;',
+      '  function onMore() { setN((prev) => prev + 1); }',
+      '  function onSet() { setN(LIMIT); }',
+      '  function onTwo() { helper(); }',
+      '  return (',
+      '    <ul>',
+      '      {items.map((item) => <Row key={item.id} style={{ color: item.color }} />)}',
+      "      <Row cols={['a', 'b']} limit={{ max: LIMIT }} sized={{ size }} f={{ h: helper }} cb={onMore} cb2={onSet} cb3={onTwo} />",
+      '      {renderRow({ color: "x" })}',
+      '    </ul>',
+      '  );',
+      '}',
+    ].join('\n'),
+  });
+  const value = (prop: string) => findJsxProp(files, 'Row', prop)[0]!.valueExpression!;
+  const decl = (prop: string) => findJsxProp(files, 'Row', prop)[0]!.declaration!;
+
+  it('hoists only values that read nothing declared in a function around them', () => {
+    expect(canHoist(value('cols'))).toBe(true);
+    expect(canHoist(value('limit'))).toBe(true); // a module constant is fine
+    expect(canHoist(value('style'))).toBe(false); // the .map callback's item
+    expect(canHoist(value('box'))).toBe(false); // state read inside a named render helper
+    expect(canHoist(value('sized'))).toBe(false); // a prop
+    expect(canHoist(value('f'))).toBe(false); // a local function
+  });
+
+  it('offers hook code only in a component or custom hook body', () => {
+    expect(inComponentBody(value('cols'))).toBe(true);
+    expect(inComponentBody(value('style'))).toBe(false);
+    expect(inComponentBody(value('box'))).toBe(false);
+  });
+
+  it('counts local functions as dependencies, setters not', () => {
+    expect(dependenciesOf(value('f'))).toEqual(['helper']);
+    expect(dependenciesOf(decl('cb3'))).toEqual(['helper']);
+    expect(dependenciesOf(decl('cb'))).toEqual([]);
+  });
+
+  it('tells an updater call from a plain one', () => {
+    expect(setterCallsIn(decl('cb'))).toEqual([{ setter: 'setN', updaterOnly: true }]);
+    expect(setterCallsIn(decl('cb2'))).toEqual([{ setter: 'setN', updaterOnly: false }]);
+    expect(setterCallsIn(decl('cb3'))).toEqual([]);
   });
 });

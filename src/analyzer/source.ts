@@ -127,6 +127,13 @@ export function snippetOf(file: ParsedFile, node: ts.Node, max = 90): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+/** True for an arrow function or function expression (`setX((prev) => …)` passes one: the updater form). */
+export function isFunctionValue(node: ts.Node): boolean {
+  let e = node;
+  while (T.isParenthesizedExpression(e) || T.isAsExpression(e)) e = e.expression;
+  return T.isArrowFunction(e) || T.isFunctionExpression(e);
+}
+
 export function textOf(file: ParsedFile, node: ts.Node): string {
   return node.getText(file.source).replace(/\s+/g, ' ').trim();
 }
@@ -433,6 +440,8 @@ export interface SyncSetterCall {
   /** The setter call inside the effect body. */
   call: ts.CallExpression;
   effect: string;
+  /** The `useEffect(…)` call around it. */
+  effectCall: ts.CallExpression;
   file: ParsedFile;
   owner: string;
 }
@@ -448,7 +457,7 @@ export function syncSetterCallsInEffects(file: ParsedFile, owner: FunctionLike, 
     if (!callback || !(T.isArrowFunction(callback) || T.isFunctionExpression(callback))) return;
     const check = (inner: ts.Node): void => {
       if (T.isCallExpression(inner) && T.isIdentifier(inner.expression) && setters.has(inner.expression.text)) {
-        calls.push({ setter: inner.expression.text, call: inner, effect, file, owner: functionName(owner) ?? 'anonymous' });
+        calls.push({ setter: inner.expression.text, call: inner, effect, effectCall: node, file, owner: functionName(owner) ?? 'anonymous' });
       }
     };
     walkBody(callback, check);
@@ -474,6 +483,8 @@ export interface StateInEffectSource {
   file: ParsedFile;
   call: ts.CallExpression;
   effect: string;
+  /** The `useEffect(…)` call that contains the setter call: the line the finding points at. */
+  effectCall: ts.CallExpression;
   /** True when the hook index was matched to its useState; false when the only candidate was used. */
   matchedByIndex: boolean;
 }
@@ -494,6 +505,7 @@ export function confirmStateInEffect(files: readonly ParsedFile[], component: st
       file: call.file,
       call: call.call,
       effect: call.effect,
+      effectCall: call.effectCall,
       matchedByIndex,
     });
     const byIndex = hooks.find((h) => h.index === hookIndex);
@@ -539,6 +551,8 @@ export interface JsxPropMatch {
   variable: string | null;
   /** valueKind 'prop': the component whose props it comes from, and the prop's name there. */
   fromProp: { component: string; prop: string } | null;
+  /** valueKind 'local-function' declared with `function name() {}` in the component: that declaration. */
+  declaration: ts.FunctionDeclaration | null;
 }
 
 function unwrap(expr: ts.Expression): ts.Expression {
@@ -571,10 +585,10 @@ function propNameOf(param: ts.ParameterDeclaration, local: string): string | nul
   return null;
 }
 
-type Classified = Pick<JsxPropMatch, 'valueKind' | 'valueExpression' | 'variable' | 'fromProp'>;
+type Classified = Pick<JsxPropMatch, 'valueKind' | 'valueExpression' | 'variable' | 'fromProp' | 'declaration'>;
 
 function classify(attribute: ts.JsxAttribute): Classified {
-  const none = { valueExpression: null, variable: null, fromProp: null };
+  const none = { valueExpression: null, variable: null, fromProp: null, declaration: null };
   const init = attribute.initializer;
   const expr = init && T.isJsxExpression(init) ? init.expression : undefined;
   if (!expr) return { valueKind: 'other', ...none };
@@ -604,7 +618,7 @@ function classify(attribute: ts.JsxAttribute): Classified {
       const prop = propNameOf(param, name);
       return { ...none, valueKind: 'prop', variable: name, fromProp: component && prop ? { component, prop } : null };
     }
-    const found: { value: { kind: PropValueKind; expression: ts.Expression | null } | null } = { value: null };
+    const found: { value: { kind: PropValueKind; expression: ts.Expression | null; declaration?: ts.FunctionDeclaration } | null } = { value: null };
     walkBody(scope, (node) => {
       if (found.value) return;
       if (T.isVariableDeclaration(node) && T.isIdentifier(node.name) && node.name.text === name && node.initializer) {
@@ -615,9 +629,9 @@ function classify(attribute: ts.JsxAttribute): Classified {
     const body = scope.body;
     if (!found.value && body && T.isBlock(body)) {
       const decl = body.statements.find((s): s is ts.FunctionDeclaration => T.isFunctionDeclaration(s) && s.name?.text === name);
-      if (decl) found.value = { kind: 'local-function', expression: null };
+      if (decl) found.value = { kind: 'local-function', expression: null, declaration: decl };
     }
-    if (found.value) return { valueKind: found.value.kind, valueExpression: found.value.expression, variable: name, fromProp: null };
+    if (found.value) return { valueKind: found.value.kind, valueExpression: found.value.expression, variable: name, fromProp: null, declaration: found.value.declaration ?? null };
   }
   return { ...none, valueKind: 'other', variable: name }; // module level, or not found
 }
@@ -658,38 +672,39 @@ export function findJsxProp(files: readonly ParsedFile[], component: string, pro
   return matches;
 }
 
-/**
- * Dependencies for a useMemo/useCallback around `expression`: the names it reads that are
- * declared in the component (its props and locals), minus state setters, in order of first use.
- */
-export function dependenciesOf(expression: ts.Expression): string[] {
-  const component = innermostNamedFunction(expression);
-  if (!component) return [];
-  const locals = new Set<string>(component.parameters.flatMap((p) => bindingNames(p.name)));
-  const setters = new Set<string>();
-  walkBody(component, (node) => {
-    if (T.isVariableDeclaration(node)) {
-      for (const n of bindingNames(node.name)) locals.add(n);
-      if (T.isArrayBindingPattern(node.name) && node.initializer && T.isCallExpression(node.initializer)) {
-        const hook = calleeName(node.initializer);
-        const second = node.name.elements[1];
-        if ((hook === 'useState' || hook === 'useReducer') && second && T.isBindingElement(second) && T.isIdentifier(second.name)) {
-          setters.add(second.name.text);
-        }
-      }
-    }
-  });
-  const own = new Set<string>(); // names declared inside the expression itself (callback parameters, locals)
+/** Names declared by a node itself: parameters, variables, function and class declarations. */
+function declaredNames(node: ts.Node): string[] {
+  if (T.isParameter(node) || T.isVariableDeclaration(node) || T.isBindingElement(node)) return bindingNames(node.name);
+  if ((T.isFunctionDeclaration(node) || T.isClassDeclaration(node)) && node.name) return [node.name.text];
+  return [];
+}
+
+/** Names a function declares in its own scope: parameters, and declarations in its body outside nested functions. */
+function scopeNames(fn: FunctionLike): string[] {
+  const names = fn.parameters.flatMap((p) => bindingNames(p.name));
+  const walk = (node: ts.Node): void => {
+    names.push(...declaredNames(node)); // a nested function declaration's name is in this scope…
+    if (isFunctionLike(node)) return; // …its insides are not
+    T.forEachChild(node, walk);
+  };
+  if (fn.body) T.forEachChild(fn.body, walk);
+  return names;
+}
+
+/** The names an expression reads that it doesn't declare itself, in order of first use; `this` as "this". */
+function freeNames(expression: ts.Node): string[] {
+  const own = new Set<string>(); // declared inside the expression (callback parameters, locals)
   const visitDecl = (node: ts.Node): void => {
-    if (T.isParameter(node) || T.isVariableDeclaration(node)) for (const n of bindingNames(node.name)) own.add(n);
+    for (const n of declaredNames(node)) own.add(n);
     T.forEachChild(node, visitDecl);
   };
   visitDecl(expression);
-  const deps: string[] = [];
+  const free: string[] = [];
   const add = (name: string): void => {
-    if (locals.has(name) && !setters.has(name) && !own.has(name) && !deps.includes(name)) deps.push(name);
+    if (!own.has(name) && !free.includes(name)) free.push(name);
   };
   const visit = (node: ts.Node): void => {
+    if (node.kind === T.SyntaxKind.ThisKeyword) add('this');
     if (T.isShorthandPropertyAssignment(node)) {
       add(node.name.text);
       return;
@@ -705,5 +720,78 @@ export function dependenciesOf(expression: ts.Expression): string[] {
     T.forEachChild(node, visit);
   };
   visit(expression);
-  return deps;
+  return free;
+}
+
+/** State setters a function declares: `const [x, setX] = useState(…)` / useReducer. */
+function settersIn(fn: FunctionLike): Set<string> {
+  const setters = new Set<string>();
+  walkBody(fn, (node) => {
+    if (T.isVariableDeclaration(node) && T.isArrayBindingPattern(node.name) && node.initializer && T.isCallExpression(node.initializer)) {
+      const hook = calleeName(node.initializer);
+      const second = node.name.elements[1];
+      if ((hook === 'useState' || hook === 'useReducer') && second && T.isBindingElement(second) && T.isIdentifier(second.name)) setters.add(second.name.text);
+    }
+  });
+  return setters;
+}
+
+/**
+ * True when the value reads nothing declared in any function around it (parameters, locals, local
+ * functions, a `.map` callback's item, a helper's variables) and doesn't use `this`: it can move to
+ * module level unchanged.
+ */
+export function canHoist(expression: ts.Node): boolean {
+  const scoped = new Set<string>();
+  for (let current: ts.Node | undefined = expression.parent; current; current = current.parent) {
+    if (isFunctionLike(current)) for (const n of scopeNames(current)) scoped.add(n);
+  }
+  return freeNames(expression).every((n) => n !== 'this' && !scoped.has(n));
+}
+
+/**
+ * True when a hook can be called right where the value is created: the function around it is a
+ * component or a custom hook (Capitalized or useX), not a `.map` callback or a render helper.
+ */
+export function inComponentBody(expression: ts.Node): boolean {
+  for (let current: ts.Node | undefined = expression.parent; current; current = current.parent) {
+    if (!isFunctionLike(current)) continue;
+    const name = functionName(current);
+    return name !== null && /^(?:[A-Z]|use[A-Z0-9])/.test(name);
+  }
+  return false;
+}
+
+/**
+ * Dependencies for a useMemo/useCallback around `expression`: the names it reads that are
+ * declared in the component (its props, locals and local functions), minus state setters, in order
+ * of first use.
+ */
+export function dependenciesOf(expression: ts.Expression | ts.FunctionDeclaration): string[] {
+  const component = innermostNamedFunction(expression);
+  if (!component) return [];
+  const locals = new Set(scopeNames(component));
+  const setters = settersIn(component);
+  return freeNames(expression).filter((n) => locals.has(n) && !setters.has(n));
+}
+
+/**
+ * The component's state setters a function calls, and whether every call passes an updater
+ * (`setTodos((prev) => …)`), so the function needn't read that state.
+ */
+export function setterCallsIn(fn: ts.FunctionDeclaration): { setter: string; updaterOnly: boolean }[] {
+  const component = innermostNamedFunction(fn);
+  if (!component) return [];
+  const setters = settersIn(component);
+  const found = new Map<string, boolean>();
+  const visit = (node: ts.Node): void => {
+    if (T.isCallExpression(node) && T.isIdentifier(node.expression) && setters.has(node.expression.text)) {
+      const arg = node.arguments[0];
+      const updater = node.arguments.length === 1 && arg !== undefined && isFunctionValue(arg);
+      found.set(node.expression.text, (found.get(node.expression.text) ?? true) && updater);
+    }
+    T.forEachChild(node, visit);
+  };
+  if (fn.body) visit(fn.body);
+  return [...found].map(([setter, updaterOnly]) => ({ setter, updaterOnly }));
 }

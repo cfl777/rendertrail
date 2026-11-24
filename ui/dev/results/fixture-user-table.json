@@ -1,0 +1,460 @@
+{
+  "title": "Fixture: user-table, 1 finding",
+  "note": "fixtures/user-table, unfixed, from its saved trace (test/fixtures/traces). See its EXPECTED.md.",
+  "input": {
+    "files": [
+      {
+        "path": "data.ts",
+        "content": "export type User = { id: number; name: string; email: string; role: Role };\nexport type Role = 'admin' | 'editor' | 'viewer';\n\nexport const ROLES: Role[] = ['admin', 'editor', 'viewer'];\n\n// 150 users with deterministic names and roles.\nexport const USERS: User[] = Array.from({ length: 150 }, (_, i) => ({\n  id: i + 1,\n  name: `User ${i + 1}`,\n  email: `user${i + 1}@example.test`,\n  role: ROLES[i % ROLES.length],\n}));\n"
+      },
+      {
+        "path": "UserAdmin.tsx",
+        "content": "import { useState } from 'react';\nimport { ROLES, USERS } from './data';\nimport { FilterPanel, UserTable } from './UserTable';\n\nexport default function UserAdmin() {\n  const [filtersOpen, setFiltersOpen] = useState(false);\n\n  return (\n    <div>\n      <button aria-label=\"Toggle filters\" onClick={() => setFiltersOpen((open) => !open)}>\n        {filtersOpen ? 'Hide filters' : 'Show filters'}\n      </button>\n      <FilterPanel open={filtersOpen} roles={ROLES} />\n      <UserTable users={USERS} columns={['name', 'email', 'role']} />\n    </div>\n  );\n}\n"
+      },
+      {
+        "path": "UserTable.tsx",
+        "content": "import { memo } from 'react';\nimport type { Role, User } from './data';\n\n// Deliberately slow (about 0.06 ms per row) so wasted renders cost real time.\nfunction busyWait(ms: number) {\n  const end = performance.now() + ms;\n  while (performance.now() < end) {\n    // do nothing\n  }\n}\n\ntype Column = keyof Omit<User, 'id'>;\n\nfunction UserRow({ user, columns }: { user: User; columns: Column[] }) {\n  busyWait(0.06);\n  return (\n    <tr>\n      {columns.map((column) => (\n        <td key={column}>{user[column]}</td>\n      ))}\n    </tr>\n  );\n}\n\nexport const UserTable = memo(function UserTable({ users, columns }: { users: User[]; columns: Column[] }) {\n  return (\n    <table>\n      <thead>\n        <tr>\n          {columns.map((column) => (\n            <th key={column}>{column}</th>\n          ))}\n        </tr>\n      </thead>\n      <tbody>\n        {users.map((user) => (\n          <UserRow key={user.id} user={user} columns={columns} />\n        ))}\n      </tbody>\n    </table>\n  );\n});\n\nexport const FilterPanel = memo(function FilterPanel({ open, roles }: { open: boolean; roles: Role[] }) {\n  if (!open) return null;\n  return (\n    <aside>\n      {roles.map((role) => (\n        <label key={role}>\n          <input type=\"checkbox\" /> {role}\n        </label>\n      ))}\n    </aside>\n  );\n});\n"
+      }
+    ],
+    "entry": "UserAdmin.tsx",
+    "exportName": "default",
+    "steps": [
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle filters\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle filters\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle filters\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      },
+      {
+        "action": "click",
+        "target": "button[aria-label=\"Toggle filters\"]"
+      },
+      {
+        "action": "wait",
+        "ms": 150
+      }
+    ]
+  },
+  "output": {
+    "schemaVersion": 1,
+    "run": {
+      "id": "r_us3rtb",
+      "createdAt": "2026-11-11T09:00:00.000Z",
+      "summary": {
+        "entry": "UserAdmin.tsx",
+        "exportName": "default",
+        "reactVersion": "19.3.1",
+        "browser": "Chrome 157.0.8103.79",
+        "steps": [
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle filters\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle filters\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle filters\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          },
+          {
+            "action": "click",
+            "target": "button[aria-label=\"Toggle filters\"]"
+          },
+          {
+            "action": "wait",
+            "ms": 150
+          }
+        ],
+        "runs": 3,
+        "stable": true,
+        "instability": [],
+        "commitCount": 5,
+        "truncated": false,
+        "commits": [
+          {
+            "index": 0,
+            "trigger": "mount",
+            "renderMs": 19.8,
+            "renderMsRuns": [
+              20.6,
+              19.8,
+              19.5
+            ],
+            "rendered": [
+              {
+                "name": "UserAdmin",
+                "count": 1,
+                "memo": false,
+                "notes": []
+              },
+              {
+                "name": "FilterPanel",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "UserTable",
+                "count": 1,
+                "memo": true,
+                "notes": []
+              },
+              {
+                "name": "UserRow",
+                "count": 150,
+                "memo": false,
+                "notes": []
+              }
+            ]
+          },
+          {
+            "index": 1,
+            "trigger": "input",
+            "renderMs": 16.4,
+            "renderMsRuns": [
+              16.5,
+              16.4,
+              16.2
+            ],
+            "rendered": [
+              {
+                "name": "UserAdmin",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 false → true"
+                ]
+              },
+              {
+                "name": "FilterPanel",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "open changed"
+                ]
+              },
+              {
+                "name": "UserTable",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "UserRow",
+                "count": 150,
+                "memo": false,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "trigger": "input",
+            "renderMs": 15.6,
+            "renderMsRuns": [
+              15.6,
+              15.3,
+              15.6
+            ],
+            "rendered": [
+              {
+                "name": "UserAdmin",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 true → false"
+                ]
+              },
+              {
+                "name": "FilterPanel",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "open changed"
+                ]
+              },
+              {
+                "name": "UserTable",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "UserRow",
+                "count": 150,
+                "memo": false,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "trigger": "input",
+            "renderMs": 15.4,
+            "renderMsRuns": [
+              15.5,
+              15.4,
+              15.2
+            ],
+            "rendered": [
+              {
+                "name": "UserAdmin",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 false → true"
+                ]
+              },
+              {
+                "name": "FilterPanel",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "open changed"
+                ]
+              },
+              {
+                "name": "UserTable",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "UserRow",
+                "count": 150,
+                "memo": false,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              }
+            ]
+          },
+          {
+            "index": 4,
+            "trigger": "input",
+            "renderMs": 15.2,
+            "renderMsRuns": [
+              15.1,
+              15.2,
+              15.2
+            ],
+            "rendered": [
+              {
+                "name": "UserAdmin",
+                "count": 1,
+                "memo": false,
+                "notes": [
+                  "state #0 true → false"
+                ]
+              },
+              {
+                "name": "FilterPanel",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "open changed"
+                ]
+              },
+              {
+                "name": "UserTable",
+                "count": 1,
+                "memo": true,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              },
+              {
+                "name": "UserRow",
+                "count": 150,
+                "memo": false,
+                "notes": [
+                  "columns changed (new reference, same value)"
+                ]
+              }
+            ]
+          }
+        ],
+        "rendersAfterMount": {
+          "UserAdmin": 4,
+          "FilterPanel": 4,
+          "UserTable": 4,
+          "UserRow": 600
+        },
+        "timings": {
+          "mountMs": 19.8,
+          "inputCommits": 4,
+          "inputMedianMs": 15.5,
+          "followUpCommits": 0,
+          "laterCommits": 0,
+          "frameBudgetMs": 16.7
+        },
+        "stubs": [],
+        "timerResolutionMs": 0.1,
+        "pageErrors": []
+      },
+      "steps": [
+        {
+          "index": 0,
+          "commits": [
+            1
+          ],
+          "renderMs": 16.4,
+          "renders": 153
+        },
+        {
+          "index": 1,
+          "commits": [
+            2
+          ],
+          "renderMs": 15.6,
+          "renders": 153
+        },
+        {
+          "index": 2,
+          "commits": [
+            3
+          ],
+          "renderMs": 15.4,
+          "renders": 153
+        },
+        {
+          "index": 3,
+          "commits": [
+            4
+          ],
+          "renderMs": 15.2,
+          "renders": 153
+        }
+      ]
+    },
+    "findings": [
+      {
+        "id": "unstable-prop:UserTable:columns",
+        "rule": "unstable-prop",
+        "component": "UserTable",
+        "prop": {
+          "name": "columns",
+          "type": "array"
+        },
+        "location": {
+          "file": "UserAdmin.tsx",
+          "line": 14,
+          "snippet": "columns={['name', 'email', 'role']}"
+        },
+        "stepsAffected": 4,
+        "steps": 4,
+        "commits": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "msPerStep": 15.3,
+        "msPerAffectedStep": 15.31,
+        "rendersPerStep": 151,
+        "rendersPerAffectedStep": 151,
+        "below": {
+          "UserRow": 150
+        },
+        "fix": {
+          "kind": "useMemo",
+          "compilerFixes": true
+        },
+        "texts": {
+          "summary": "UserTable (memo) re-renders with 150 UserRow below it on every click: prop `columns` is a new array each render with the same value, created at UserAdmin.tsx:14. Wasted: about 15.3 ms per click. Fix: move it out of the component, since it uses nothing from it, or wrap it in useMemo (React Compiler would do this automatically).",
+          "why": "memo only skips a render when every prop is the same object as last time. `columns` looks the same, but it's a new array on every render, so UserTable and everything below it re-renders for nothing.",
+          "line": "`columns={['name', 'email', 'role']}` at UserAdmin.tsx:14.",
+          "fix": "It uses nothing from the component, so move it outside, to the top of the file: `const COLUMNS = ['name', 'email', 'role'];`, then pass `columns={COLUMNS}`. UserTable then gets the same array on every render. Wrapping it in useMemo also works: `const columns = useMemo(() => ['name', 'email', 'role'], []);`. React Compiler would do this automatically."
+        },
+        "rank": 1
+      }
+    ],
+    "keystroke": {
+      "unit": "click",
+      "label": "Clicking 4 times",
+      "caption": "clicked 4 times in UserAdmin",
+      "steps": 4,
+      "msPerStep": 15.5,
+      "rendersPerStep": 153,
+      "frameBudgetMs": 16.7,
+      "overBudget": false,
+      "wastedMsPerStep": 15.3,
+      "restMsPerStep": 0.2,
+      "headline": "Every click re-renders 151 components that didn't change: UserTable and 150 × UserRow.",
+      "subline": "Each click takes 15.5 ms. A click feels instant when an update fits in one screen refresh (about 16.7 ms), so this should feel smooth.",
+      "tree": [
+        {
+          "name": "UserAdmin",
+          "depth": 0,
+          "label": "state-origin",
+          "memo": false,
+          "count": 1,
+          "below": {},
+          "ms": 15.5
+        },
+        {
+          "name": "FilterPanel",
+          "depth": 1,
+          "label": "needed",
+          "memo": true,
+          "count": 1,
+          "below": {},
+          "ms": 0.2
+        },
+        {
+          "name": "UserTable",
+          "depth": 1,
+          "label": "memo-broken",
+          "memo": true,
+          "count": 1,
+          "below": {
+            "UserRow": 150
+          },
+          "ms": 15.2
+        }
+      ]
+    }
+  }
+}

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { RecordedCommit, RecordedTrace, RenderedComponent, TraceSummary } from '../shared/types.js';
+import type { Finding, RecordedCommit, RecordedTrace, RenderedComponent, TraceSummary } from '../shared/types.js';
 import { laggyFiles, savedTrace } from '../../test/helpers/laggy.js';
 import { summarize } from '../recorder/summarize.js';
-import { analyze } from './index.js';
+import { analyze, noteOverlaps } from './index.js';
 import { groupSteps } from './steps.js';
 import { formatAnalysis } from './text.js';
 
@@ -216,7 +216,7 @@ describe('rule 1', () => {
   it('skips it under 1 ms per step and says so', async () => {
     const { a, text } = await run(clickTrace(3, () => 0.5), clicks(3), [APP]);
     expect(a.findings).toEqual([]);
-    expect(text).toContain('No problem passed the thresholds');
+    expect(text).toContain('No main problem found: ');
     expect(text).toMatch(/Raw cost per click \(median of 3 clicks\): 0\.6 ms, 2 component renders\./);
   });
 
@@ -330,6 +330,22 @@ describe('rule 1', () => {
     expect(a.findings[0]).toMatchObject({ fix: { kind: 'useMemo' }, location: { line: 6, snippet: 'style={{ a: 2 }}' } });
     expect(a.findings[0]!.otherLocations).toEqual([{ file: 'App.tsx', line: 6, snippet: 'style={memoed}' }]);
   });
+
+  it("doesn't say to move a value out when it reads the .map callback's item, nor give hook code inside the callback", async () => {
+    const mapped = file([
+      "import { memo, useState } from 'react';",
+      'const Row = memo(function Row({ style }: { style: object }) { return <li />; });',
+      'export function App({ items }: { items: { id: number; color: string }[] }) {',
+      '  const [n, setN] = useState(0);',
+      '  return <ul onClick={() => setN(n + 1)}>{items.map((item) => <Row key={item.id} style={{ color: item.color }} />)}</ul>;',
+      '}',
+    ]);
+    const { a } = await run(retarget(clickTrace(3, () => 2, 'object'), 'style'), clicks(3), [mapped]);
+    const f = a.findings[0]!;
+    expect(f).toMatchObject({ fix: { kind: 'useMemo' }, location: { line: 5 } });
+    expect(f.texts.fix).not.toContain('move it outside');
+    expect(f.texts.fix).not.toContain('useMemo(() =>');
+  });
 });
 
 /** The click trace with Row's changed prop renamed. */
@@ -415,5 +431,25 @@ describe('no input', () => {
     expect(a.steps).toEqual([]);
     expect(a.keystroke.headline).toContain('No updates after input');
     expect(text.split('\n')[0]).toBe('wait 100 ms: no update followed an input event, so there is no cost per step to report.');
+  });
+});
+
+describe('noteOverlaps', () => {
+  const finding = (over: Partial<Finding>): Finding =>
+    ({ id: 'x', rule: 'unstable-prop', rank: 1, component: 'X', commits: [], texts: { summary: 'S.', why: '', line: '', fix: '' }, ...over }) as Finding;
+
+  it('names only listed rule 1 findings that share an update, by number, and appends the note', () => {
+    const effect = finding({ id: 'e', rule: 'state-in-effect', rank: 2, component: 'Page', commits: [2, 4] });
+    const shown = finding({ id: 'a', rank: 1, component: 'Matrix', commits: [1, 2, 3, 4] });
+    const cut = finding({ id: 'b', rank: 4, component: 'Hidden', commits: [2] });
+    const elsewhere = finding({ id: 'c', rank: 3, component: 'Other', commits: [1, 3] });
+    const out = noteOverlaps([shown, effect, elsewhere, cut]);
+    expect(out[1]!.texts.summary).toBe("S. Its extra update also re-renders Matrix (finding 1) for nothing, so part of its time is the same waste: don't add the two up.");
+    expect(out[0]).toBe(shown);
+  });
+
+  it('leaves a summary alone when no listed finding overlaps, whatever its wording', () => {
+    const effect = finding({ id: 'e', rule: 'state-in-effect', rank: 1, commits: [2], texts: { summary: 'no fix part here', why: '', line: '', fix: '' } });
+    expect(noteOverlaps([effect, finding({ rank: 4, commits: [2] })])[0]!.texts.summary).toBe('no fix part here');
   });
 });

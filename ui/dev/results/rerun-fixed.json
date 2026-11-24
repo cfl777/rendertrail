@@ -565,7 +565,7 @@
         "location": {
           "file": "SearchBox.tsx",
           "line": 10,
-          "snippet": "setCharCount(value.length)"
+          "snippet": "useEffect(() => setCharCount(value.length), [value])"
         },
         "stepsAffected": 5,
         "steps": 5,
@@ -588,7 +588,7 @@
         "texts": {
           "summary": "SearchBox sets state inside useEffect (SearchBox.tsx:10): one extra update per letter (under 0.1 ms). Fix: compute charCount during render: `const charCount = value.length;`. React Compiler doesn't fix this one.",
           "why": "SearchBox copies a value into state inside useEffect. React renders SearchBox, runs the effect, and then has to render it again with the new charCount: two updates where one would do.",
-          "line": "`setCharCount(value.length)` at SearchBox.tsx:10.",
+          "line": "`useEffect(() => setCharCount(value.length), [value])` at SearchBox.tsx:10.",
           "fix": "Compute `charCount` during render instead: `const charCount = value.length;`, and remove its useState and the useEffect. React Compiler doesn't fix this one."
         },
         "rank": 1

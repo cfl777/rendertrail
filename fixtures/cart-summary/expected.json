@@ -4,28 +4,27 @@
   "fixedEntry": "Cart.fixed.tsx",
   "variants": {
     "Cart.tsx": {
-      "commitCount": 15,
+      "commitCount": 14,
       "commits": [
         { "index": 0, "trigger": "mount", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
         { "index": 1, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 2, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 3, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 2, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 3, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
         { "index": 4, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 5, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 6, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 5, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 6, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
         { "index": 7, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 8, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 9, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 8, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 9, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
         { "index": 10, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 11, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 12, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
-        { "index": 13, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
-        { "index": 14, "trigger": "follow-up", "renders": { "CartSummary": 1 } }
+        { "index": 11, "trigger": "input", "renders": { "Cart": 1, "CartLine": 3, "CartSummary": 1 } },
+        { "index": 12, "trigger": "follow-up", "renders": { "CartSummary": 1 } },
+        { "index": 13, "trigger": "follow-up", "renders": { "CartSummary": 1 } }
       ],
       "rendersAfterMount": {
         "Cart": 4,
         "CartLine": 12,
-        "CartSummary": 14
+        "CartSummary": 13
       },
       "inputMedianMsRange": [0.1, 20]
     },
@@ -49,6 +48,36 @@
         "CartSummary": 9
       },
       "inputMedianMsRange": [0.1, 20]
+    }
+  },
+  "findings": {
+    "$comment": "Machine-readable copy of EXPECTED.md's \"Findings the analyzer must report\" and \"Must NOT be reported\", checked by test/golden/analyzer.golden.test.ts (and on the saved traces by test/analyzer-fixtures.test.ts). `report` lists every finding in rank order (exactly these, nothing else). A `mustNotReport` entry matches a finding when all its fields match: component, prop, setter, hookOwner, file, or commit (a commit index the finding includes). `comparison` records `baseline`, then `fixed` sent under the baseline's entry path with the first run's id as baselineRunId, and lists finding ids. The fixed variant's empty `report` and the `comparison` are inferred from EXPECTED.md's \"After the fix\" section, which lists no findings of its own: nothing must be reported once the fix is in. Commit indexes follow EXPECTED.md's 14-commit table (since the owner-approved initial-state change of 2026-11-23).",
+    "variants": {
+      "Cart.tsx": {
+        "report": [
+          { "rule": "state-in-effect", "component": "CartSummary", "setter": "setTotal", "location": "CartSummary.tsx:28", "fix": "compute-in-render", "compilerFixes": false, "stepsAffected": 4, "steps": 4 }
+        ],
+        "mustNotReport": [
+          { "setter": "setQuote" }, { "hookOwner": "useShippingQuote" },
+          { "commit": 1 },
+          { "commit": 4 }, { "commit": 7 }, { "commit": 10 }, { "commit": 13 },
+          { "component": "CartLine" }, { "prop": "onChange" }, { "component": "Cart" }
+        ]
+      },
+      "Cart.fixed.tsx": {
+        "report": [],
+        "mustNotReport": [
+          { "setter": "setQuote" }, { "hookOwner": "useShippingQuote" },
+          { "component": "CartLine" }, { "prop": "onChange" }, { "component": "Cart" }
+        ]
+      }
+    },
+    "comparison": {
+      "baseline": "Cart.tsx",
+      "fixed": "Cart.fixed.tsx",
+      "resolved": ["state-in-effect:CartSummary:setTotal"],
+      "stillThere": [],
+      "new": []
     }
   }
 }
